@@ -7,7 +7,7 @@ This is a project being developed by Nat Henry, nathaniel.henry@ndm.ox.ac.uk
 Mortality data, population data, and census-based covariates were downloaded 
 from IStat, the Italian Statistical Authority.
 
-### Mortality
+#### Mortality
 
 IStat has periodically released detailed tabulations of all-cause mortality by
 municipality to help explore the effects of COVID on mortality. I accessed the
@@ -17,7 +17,7 @@ deaths) which had last been updated on August 10, 2020. Direct link to the
 mortality dataset as of August 18, 2020: 
 https://www.istat.it/it/files//2020/03/Dataset-decessi-comunali-giornalieri-e-tracciato-record_al30giugno.zip
 
-### Population
+#### Population
 
 Population data was downloaded from the [IStat Data Portal](https://dati.istat.it) 
 under the header "Population and Households > Population > Resident Population 
@@ -38,17 +38,22 @@ following settings to download tabulated population data:
   - English language
   - Comma separated
 
-### Covariates
+#### Covariates
 
 Covariates were downloaded by commune for all available years since 2015:
-- "Reddito delle persone fisiche: Contribuenti e principali categorie di reddito" (2015-2018)
-- Others (**TODO**)
+- Individual income (2015-2018), by commune
+- Infant mortality (2015-2017) per 100k population, by province
+- Social services spending (2017-2017) per 100k population, by commune
 
+For more recent years where a covariate was missing, the average of the last two
+available years of data was taken
 
-### Shapefile
+#### Shapefile
 
 A commune-level shapefile was downloaded from the [IStat website](https://www.istat.it/it/archivio/222527).
-Direct link to 2020 shapefile as of August 18, 2020: http://www.istat.it/storage/cartografia/confini_amministrativi/non_generalizzati/Limiti01012020.zip
+Direct link to 2020 shapefile as of August 18, 2020: 
+- Most detailed (for analysis): http://www.istat.it/storage/cartografia/confini_amministrativi/non_generalizzati/Limiti01012020.zip
+- Less detailed (for mapping): http://www.istat.it/storage/cartografia/confini_amministrativi/generalizzati/Limiti01012020_g.zip
 
 
 ## License
