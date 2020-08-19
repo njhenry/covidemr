@@ -41,9 +41,10 @@ following settings to download tabulated population data:
 #### Covariates
 
 Covariates were downloaded by commune for all available years since 2015:
-- Individual income (2015-2018), by commune
-- Infant mortality (2015-2017) per 100k population, by province
-- Social services spending (2017-2017) per 100k population, by commune
+- Total fertility rate (2015-2018), by province
+- Proportion of targeted families reached by various social services (2015-2017), by province
+- Q1 unemployment by sex, all age groups (2015-2020), by province
+
 
 For more recent years where a covariate was missing, the average of the last two
 available years of data was taken
