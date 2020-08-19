@@ -5,13 +5,16 @@
 #' creates a data.table of age groupings with IDs and lower/upper bounds for
 #' each age group
 #'
+#' @import data.table
+#'
 #' @param age_cutoffs Vector of lower bounds for each age group, starting at 0
 #'
 #' @return Data.table containing age group categories
 #'
+#' @export
 create_age_groups <- function(age_cutoffs = seq(0, 100, by=20)){
   if(length(age_cutoffs)==0) stop("Need at least one age group!")
-  age_groups <- data.table(age_group_code = 1:length(age_cutoffs))
+  age_groups <- data.table::data.table(age_group_code = 1:length(age_cutoffs))
   # Set start and end years for each age group
   age_groups[, age_group_years_start := age_cutoffs ]
   if(length(age_cutoffs)==1){
@@ -28,6 +31,8 @@ create_age_groups <- function(age_cutoffs = seq(0, 100, by=20)){
 
 #' Prepare death data for Italy
 #'
+#' @import data.table
+#'
 #' Given raw data all-cause mortality by age, sex, date, and province in Italy,
 #' prepare the data using standard identifiers and grouped by year and week.
 #' This is a convenience function designed specifically to work with data
@@ -43,6 +48,7 @@ create_age_groups <- function(age_cutoffs = seq(0, 100, by=20)){
 #'
 #' @return Data.table of formatted death data
 #'
+#' @export
 ita_prepare_deaths <- function(
   deaths_raw, age_cutoffs, model_years, first_covid_death_date
 ){
@@ -103,11 +109,14 @@ ita_prepare_deaths <- function(
 #' the data for modeling. This is a convenience function specifically designed
 #' to be use with IStat data. For more information, see the repository README.
 #'
+#' @import data.table
+#'
 #' @param pop_raw Raw population data.table downloaded from IStat
 #' @param age_cutoffs Vector of the starting years for each age group bin. For
 #'
 #' @return Data.table of formatted population data
 #'
+#' @export
 ita_prepare_pop <- function(pop_raw, age_cutoffs){
   setnames(pop_raw, c('TIME','ITTER107'), c('year', 'icode'))
 
