@@ -9,6 +9,13 @@ paths:
   model_results: '/ihme/homes/nathenry/ita_emr/model_results'
   shp_detailed: '/ihme/homes/nathenry/ita_emr/shp/Limiti01012020/ProvCM01012020/ProvCM01012020_WGS84.shp'
   shp_generalized: '/ihme/homes/nathenry/ita_emr/shp/Limiti01012020_g/ProvCM01012020_g/ProvCM01012020_g_WGS84.shp'
+prepped_data_version: '20200818'
+prepped_data_files:
+  location_table: 'location_table.csv'
+  population: 'prepped_pop.csv'
+  deaths: 'prepped_deaths.csv'
+  full_data: 'prepped_data_full.csv'
+  shapefile: 'analysis_shp.RDS'
 model_years: [2015, 2016, 2017, 2018, 2019, 2020]
 age_cutoffs: [0, 15, 30, 45, 60, 75]
 first_death_date: '2020-03-01' # In YYYY-MM-DD format
