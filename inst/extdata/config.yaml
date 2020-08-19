@@ -1,5 +1,5 @@
 paths:
-  raw_pop_dir: '/ihme/homes/nathenry/ita_emr/pop'
+  raw_pop: '/ihme/homes/nathenry/ita_emr/pop/pop_all_by_province.csv'
   raw_deaths: '/ihme/homes/nathenry/ita_emr/deaths/comuni_giornaliero_30giugno.csv'
   raw_covars:
     inf_mort: '/ihme/homes/nathenry/ita_emr/covars/COVAR_infant_mort_2015_2017_province.csv'
@@ -20,6 +20,6 @@ model_years: [2015, 2016, 2017, 2018, 2019, 2020]
 age_cutoffs: [0, 15, 30, 45, 60, 75]
 first_death_date: '2020-03-01' # In YYYY-MM-DD format
 pop_identifiers: ['age_group_code','sex','year','location_code']
-death_identifiers: ['age_group_code','sex','year','week',location_code']
+death_identifiers: ['age_group_code','sex','year','week','location_code']
 covar_identifiers: ['year','location_code']
 encoding: 'Latin-1'
