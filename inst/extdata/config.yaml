@@ -2,9 +2,9 @@ paths:
   raw_pop: '/ihme/homes/nathenry/ita_emr/pop/pop_all_by_province.csv'
   raw_deaths: '/ihme/homes/nathenry/ita_emr/deaths/comuni_giornaliero_30giugno.csv'
   raw_covars:
-    inf_mort: '/ihme/homes/nathenry/ita_emr/covars/COVAR_infant_mort_2015_2017_province.csv'
-    soc_servs: '/ihme/homes/nathenry/ita_emr/covars/COVAR_social_services_spending_2015_2017.csv'
-    income: '/ihme/homes/nathenry/ita_emr/covars/COVAR_LPREF_2015_2018.csv'
+    tfr: '/ihme/homes/nathenry/ita_emr/covars/COVAR_tfr_2015_2018_province.csv'
+    unemp: '/ihme/homes/nathenry/ita_emr/covars/COVAR_q1_unemployment_2015_2020_province.csv'
+    socserv: '/ihme/homes/nathenry/ita_emr/covars/COVAR_social_services_2015_2017_province.csv'
   prepped_data: '/ihme/homes/nathenry/ita_emr/prepped_data'
   model_results: '/ihme/homes/nathenry/ita_emr/model_results'
   shp_detailed: '/ihme/homes/nathenry/ita_emr/shp/Limiti01012020/ProvCM01012020/ProvCM01012020_WGS84.shp'
