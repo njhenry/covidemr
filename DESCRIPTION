@@ -7,3 +7,4 @@ Description: Tools for Mapping COVID Excess Mortality. See the README for more.
 License: GNU General Public License v.3
 Encoding: UTF-8
 LazyData: true
+RoxygenNote: 7.1.1
