@@ -108,7 +108,7 @@ ita_prepare_deaths <- function(
 #'
 #' @return Data.table of formatted population data
 #'
-ita_prepare_deaths <- function(pop_raw, age_cutoffs){
+ita_prepare_pop <- function(pop_raw, age_cutoffs){
   setnames(pop_raw, c('TIME','ITTER107'), c('year', 'icode'))
 
   # Format sex
