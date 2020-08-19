@@ -1,16 +1,15 @@
 
 #' Create age group categories
 #'
-#' Given a set of age cutoffs starting at 0, this function deterministically
-#' creates a data.table of age groupings with IDs and lower/upper bounds for
-#' each age group
-#'
-#' @import data.table
+#' @description Given a set of age cutoffs starting at 0, this function
+#'   deterministically creates a data.table of age groupings with IDs and
+#'   lower/upper bounds for each age group
 #'
 #' @param age_cutoffs Vector of lower bounds for each age group, starting at 0
 #'
 #' @return Data.table containing age group categories
 #'
+#' @import data.table
 #' @export
 create_age_groups <- function(age_cutoffs = seq(0, 100, by=20)){
   if(length(age_cutoffs)==0) stop("Need at least one age group!")
@@ -31,12 +30,11 @@ create_age_groups <- function(age_cutoffs = seq(0, 100, by=20)){
 
 #' Prepare death data for Italy
 #'
-#' @import data.table
-#'
-#' Given raw data all-cause mortality by age, sex, date, and province in Italy,
-#' prepare the data using standard identifiers and grouped by year and week.
-#' This is a convenience function designed specifically to work with data
-#' downloaded from Istat. For more information, see the repository README.
+#' @description Given raw data all-cause mortality by age, sex, date, and
+#'   province in Italy, prepare the data using standard identifiers and grouped
+#'   by year and week. This is a convenience function designed specifically to
+#'   work with data downloaded from Istat. For more information, see the
+#'   repository README.
 #'
 #' @param deaths_raw Data.table downloaded from IStat
 #' @param age_cutoffs Vector of the starting years for each age group bin. For
@@ -48,6 +46,7 @@ create_age_groups <- function(age_cutoffs = seq(0, 100, by=20)){
 #'
 #' @return Data.table of formatted death data
 #'
+#' @import data.table
 #' @export
 ita_prepare_deaths <- function(
   deaths_raw, age_cutoffs, model_years, first_covid_death_date
@@ -105,17 +104,17 @@ ita_prepare_deaths <- function(
 
 #' Prepare population data for Italy
 #'
-#' Given raw population data by age, sex, year, and province in Italy, format
-#' the data for modeling. This is a convenience function specifically designed
-#' to be use with IStat data. For more information, see the repository README.
-#'
-#' @import data.table
+#' @description Given raw population data by age, sex, year, and province in
+#'   Italy, format the data for modeling. This is a convenience function
+#'   specifically designed to be use with IStat data. For more information, see
+#'   the repository README.
 #'
 #' @param pop_raw Raw population data.table downloaded from IStat
 #' @param age_cutoffs Vector of the starting years for each age group bin. For
 #'
 #' @return Data.table of formatted population data
 #'
+#' @import data.table
 #' @export
 ita_prepare_pop <- function(pop_raw, age_cutoffs){
   setnames(pop_raw, c('TIME','ITTER107'), c('year', 'icode'))

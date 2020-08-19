@@ -15,7 +15,8 @@ ita_prepare_pop(pop_raw, age_cutoffs)
 Data.table of formatted population data
 }
 \description{
-Given raw population data by age, sex, year, and province in Italy, format
-the data for modeling. This is a convenience function specifically designed
-to be use with IStat data. For more information, see the repository README.
+Given raw population data by age, sex, year, and province in
+  Italy, format the data for modeling. This is a convenience function
+  specifically designed to be use with IStat data. For more information, see
+  the repository README.
 }

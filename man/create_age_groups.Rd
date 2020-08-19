@@ -13,7 +13,7 @@ create_age_groups(age_cutoffs = seq(0, 100, by = 20))
 Data.table containing age group categories
 }
 \description{
-Given a set of age cutoffs starting at 0, this function deterministically
-creates a data.table of age groupings with IDs and lower/upper bounds for
-each age group
+Given a set of age cutoffs starting at 0, this function
+  deterministically creates a data.table of age groupings with IDs and
+  lower/upper bounds for each age group
 }

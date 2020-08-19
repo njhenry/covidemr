@@ -27,5 +27,9 @@ confirmed COVID death in Italy.}
 Data.table of formatted death data
 }
 \description{
-Prepare death data for Italy
+Given raw data all-cause mortality by age, sex, date, and
+  province in Italy, prepare the data using standard identifiers and grouped
+  by year and week. This is a convenience function designed specifically to
+  work with data downloaded from Istat. For more information, see the
+  repository README.
 }
