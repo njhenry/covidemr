@@ -70,7 +70,7 @@ ita_prepare_deaths <- function(
   age_groups <- create_age_groups(age_cutoffs=age_cutoffs)
   deaths_long$age_group_code <- age_groups$age_group_code[
     findInterval(deaths_long$age_years, age_groups$age_group_years_start)
-    ]
+  ]
   # Add sexes and years
   deaths_long[, sex := 'male']
   deaths_long[ startsWith(sex_yr, 'F'), sex := 'female']
@@ -94,4 +94,41 @@ ita_prepare_deaths <- function(
                             ][order(location_code, year, week, sex, age_group_code, in_baseline)]
 
   return(deaths_agg)
+}
+
+
+#' Prepare population data for Italy
+#'
+#' Given raw population data by age, sex, year, and province in Italy, format
+#' the data for modeling. This is a convenience function specifically designed
+#' to be use with IStat data. For more information, see the repository README.
+#'
+#' @param pop_raw Raw population data.table downloaded from IStat
+#' @param age_cutoffs Vector of the starting years for each age group bin. For
+#'
+#' @return Data.table of formatted population data
+#'
+ita_prepare_deaths <- function(pop_raw, age_cutoffs){
+  setnames(pop_raw, c('TIME','ITTER107'), c('year', 'icode'))
+
+  # Format sex
+  pop_raw[, sex := gsub('s', '', Gender)]
+  # Add province code
+  pop_raw <- merge(pop_raw, location_table[, .(location_code, icode)], by='icode')
+  # Format age
+  pop_raw <- pop_raw[ Age != "total", ]
+  pop_raw[, age_years := gsub('[ yearsandover]', '', Age) ]
+  # Sort into age groups
+  age_groups <- create_age_groups(age_cutoffs=age_cutoffs)
+  pop_raw$age_group_code <- age_groups$age_group_code[
+    findInterval(pop_raw$age_years, age_groups$age_group_years_start)
+    ]
+
+  ## Collapse by identifiers
+  pop_agg <- pop_raw[,
+                     .(pop = sum(Value)),
+                     by=.(location_code, year, sex, age_group_code)
+                     ][order(location_code, year, sex, age_group_code)]
+
+  return(pop_agg)
 }
