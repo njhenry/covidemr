@@ -44,7 +44,8 @@ pop_sub <- pop_sub[!(icode %in% old_provs), ]
 
 # Merge tables to add code
 prov_table_full <- merge(prov_table, pop_sub, by='location_name', all=TRUE)
-if(nrow(prov_table_full) != 107) stop("ISSUE: Wrong number of provinces!")
+if(nrow(prov_table_full) != 107)) stop("ISSUE: Wrong number of provinces!")
+prov_table_full <- prov_table_full[order(location_code)]
 
 ## Create output directory and save
 
@@ -52,4 +53,4 @@ out_dir <- file.path(config$paths$prepped_data, config$prepped_data_version)
 dir.create(out_dir, showWarnings=FALSE)
 
 out_fp <- file.path(out_dir, config$prepped_data_files$location_table)
-write.csv(prov_table, file=out_fp, row.names=FALSE)
+write.csv(prov_table_full, file=out_fp, row.names=FALSE)
