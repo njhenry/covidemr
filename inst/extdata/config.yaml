@@ -1,0 +1,9 @@
+paths:
+  raw_deaths: '/ihme/homes/nathenry/ita_emr/covars'
+  raw_pop: '/ihme/homes/nathenry/ita_emr/pop'
+  raw_covars: '/ihme/homes/nathenry/ita_emr/deaths'
+  prepped_data: '/ihme/homes/nathenry/ita_emr/prepped_data'
+  model_results: '/ihme/homes/nathenry/ita_emr/model_results'
+model_years: [2015, 2016, 2017, 2018, 2019, 2020]
+age_cutoffs: [0, 20, 45, 65]
+first_death_date: '2020-03-01' # In YYYY-MM-DD format
