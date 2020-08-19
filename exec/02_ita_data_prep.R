@@ -45,7 +45,14 @@ write.csv(
 
 pop_raw <- fread(config$path$raw_pop, encoding=config$encoding, na.strings=c('','NA','n.d.'))
 
-# 
+pop_prepped <- ita_prepare_deaths(pop_raw, age_cutoffs=config$age_cutoffs)
+
+write.csv(
+  pop_prepped,
+  file = file.path(prepped_data_dir, config$prepped_data_files$population),
+  row.names = FALSE
+)
 
 
 ## Load and format covariates --------------------------------------------------
+
