@@ -7,6 +7,8 @@ paths:
     income: '/ihme/homes/nathenry/ita_emr/covars/COVAR_LPREF_2015_2018.csv'
   prepped_data: '/ihme/homes/nathenry/ita_emr/prepped_data'
   model_results: '/ihme/homes/nathenry/ita_emr/model_results'
+  shp_detailed: '/ihme/homes/nathenry/ita_emr/shp/Limiti01012020/ProvCM01012020/ProvCM01012020_WGS84.shp'
+  shp_generalized: '/ihme/homes/nathenry/ita_emr/shp/Limiti01012020_g/ProvCM01012020_g/ProvCM01012020_g_WGS84.shp'
 model_years: [2015, 2016, 2017, 2018, 2019, 2020]
 age_cutoffs: [0, 15, 30, 45, 60, 75]
 first_death_date: '2020-03-01' # In YYYY-MM-DD format
