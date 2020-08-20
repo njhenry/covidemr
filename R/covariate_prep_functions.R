@@ -276,7 +276,25 @@ ita_prepare_covar_unemp <- function(covar_data, model_years, location_table){
 #' @import data.table
 #' @export
 ita_prepare_covar_socserv <- function(covar_data, model_years, location_table){
-  # Prepare covariate
+
+  covar_indices <- c('year', 'location_code')
+
+  # Update names
+  setnames(covar_data, c('ITTER107', 'TIME', 'Value'), c('icode', 'year', 'socserv'))
+  # Subset to just proportion of families/children receiving at home social services
+  covar_data <- covar_data[(TIPUTENZA1=='FAM') & (TIPSERVSOC=='HOMECARE'), ]
+  # Merge on location codes
+  covar_data_merged <- merge(
+    covar_data,
+    location_table[, .(icode, location_code)],
+    by='icode'
+  )
+
+  covar_data_merged <- covar_data_merged[, c(covar_indices, 'socserv'), with=FALSE]
+  prepped_covar <- extend_covar_time_series(
+    covar_data = covar_data_merged,
+    model_years = model_years
+  )
 
   # Return
   return(list(prepped_covar = prepped_covar, covar_indices = covar_indices))
