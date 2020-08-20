@@ -211,6 +211,11 @@ backfill_input_data <- function(input_data, index_field, check_vals){
     }
     first_data_year <- input_data[ get(index_field) == check_val, min(year) ]
     backfill_years <- all_years[all_years < first_data_year]
+    if(length(backfill_years) > 0){
+      message(
+        "    Filling ", check_val, "for years: ", paste(backfill_years, collapse=', ')
+      )
+    }
     for(backfill_year in backfill_years){
       # Copy earliest year of data and change the year to the backfill year
       concat_list[[fill_idx]] <- copy(
