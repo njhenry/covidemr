@@ -227,13 +227,38 @@ ita_prepare_covar_tfr <- function(covar_data, model_years, location_table){
 #' @import data.table
 #' @export
 ita_prepare_covar_unemp <- function(covar_data, model_years, location_table){
-  # Prepare covariate
 
+  covar_indices <- c('location_code','sex','year')
+
+  # Update names
+  setnames(covar_data, c('ITTER107','TIME','Value'), c('icode', 'year', 'unemp'))
+
+  # Keep only annual values and convert to integer
+  suppressWarnings(covar_data[, year := as.integer(year) ])
+  covar_data <- covar_data[ !is.na(year), ]
+
+  # Format sex identifiers
+  covar_data[, sex := gsub('s', '', Gender) ]
+
+  # Fix Bolzano and Trento location codes, then merge on standard code table
+  covar_data[ icode == 'ITD1', icode := 'ITD10' ] # Bolzano
+  covar_data[ icode == 'ITD2', icode := 'ITD20' ] # Trento
+  covar_data_merged <- merge(
+    covar_data,
+    location_table[, .(location_code, icode)],
+    by='icode'
+  )
+
+  # Subset columns and extend to 2020 and return
+  covar_data_merged <- covar_data_merged[, c(covar_indices, 'unemp'), with=FALSE]
+  prepped_covar <- extend_covar_time_series(
+    covar_data = covar_data_merged,
+    model_years = model_years
+  )
 
   # Return
   return(list(prepped_covar = prepped_covar, covar_indices = covar_indices))
 }
-
 
 
 #' Prepare social services covariate
