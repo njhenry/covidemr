@@ -85,9 +85,11 @@ ita_prepare_deaths <- function(
   deaths_long[, day := as.integer(substr(day_id, 3, 4)) ]
   deaths_long[, date_full := as.Date(sprintf('%04d-%02d-%02d', year, month, day)) ]
   # Weeks are defined as starting on January 1st (Jan 8 starts week 2, etc.)
-  deaths_long[, week := as.integer(ceiling(
-    as.integer(strftime(date_full, format='%j')) / 7
-  )) ]
+  # Set days 365 and 366 to week 52 to avoid a stub week
+  deaths_long[, week := min(
+    as.integer(ceiling(as.integer(strftime(date_full, format='%j')) / 7)),
+    52
+  )]
 
   # Cut at the day of the first COVID death
   deaths_long[, in_baseline := as.integer(date_full < first_covid_death_date) ]
@@ -140,3 +142,5 @@ ita_prepare_pop <- function(pop_raw, age_cutoffs){
 
   return(pop_agg)
 }
+
+
