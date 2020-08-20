@@ -83,22 +83,43 @@ ita_prepare_deaths <- function(
   # Add month and day, then convert to week ID
   deaths_long[, month := as.integer(substr(day_id, 1, 2))]
   deaths_long[, day := as.integer(substr(day_id, 3, 4)) ]
-  deaths_long[, date_full := as.Date(sprintf('%04d-%02d-%02d', year, month, day)) ]
+  deaths_long[, date_full := as.Date(
+    sprintf('%04d-%02d-%02d', year, month, day),
+    format = '%Y-%m-%d'
+  )]
   # Weeks are defined as starting on January 1st (Jan 8 starts week 2, etc.)
   # Set days 365 and 366 to week 52 to avoid a stub week
-  deaths_long[, week := min(
-    as.integer(ceiling(as.integer(strftime(date_full, format='%j')) / 7)),
-    52
-  )]
+  deaths_long[, week := as.integer(ceiling(as.numeric(strftime(date_full, format='%j') ) / 7))]
+  deaths_long[ week > 52, week := 52]
 
   # Cut at the day of the first COVID death
   deaths_long[, in_baseline := as.integer(date_full < first_covid_death_date) ]
 
-  # Aggregate deaths and number of days by week across all other groups
+  # Aggregate deaths across all other groups
   deaths_agg <- deaths_long[,
-                            .(deaths=sum(deaths), observed_days=length(unique(date_full))),
+                            .(deaths=sum(deaths)),
                             by=.(location_code, year, week, sex, age_group_code, in_baseline)
                             ][order(location_code, year, week, sex, age_group_code, in_baseline)]
+
+  # Get days in week for each grouping
+  days_in_week <- data.table(date_full = seq(
+    as.Date(paste0(min(model_years),'-01-01')),
+    as.Date(paste0(max(model_years),'-12-31')),
+    by='1 day'
+  ))
+  days_in_week <- days_in_week[ date_full <= max(na.omit(deaths_long$date_full)), ]
+  days_in_week[, year := as.integer(strftime(date_full, format='%Y'))]
+  days_in_week[, week := as.integer(ceiling(as.numeric(strftime(date_full, format='%j') ) / 7))]
+  days_in_week[ week > 52, week := 52]
+  days_in_week[, in_baseline := as.integer(date_full < first_covid_death_date) ]
+  days_in_week_agg <- days_in_week[, .(observed_days = .N), by=.(year, week, in_baseline)]
+
+  # Merge onto aggregated dataset
+  deaths_agg <- merge(
+    deaths_agg,
+    days_in_week_agg,
+    by = c('year','week','in_baseline')
+  )
 
   return(deaths_agg)
 }
