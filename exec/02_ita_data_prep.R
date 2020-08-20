@@ -21,12 +21,16 @@ location_table <- data.table::fread(file.path(
   prepped_data_dir, config$prepped_data_files$location_table
 ))
 
+# Define a convenience function for loading CSVs
+ita_fread <- function(fp){
+  fread(fp, encoding=config$encoding, na.strings=c("","NA","n.d."))
+}
+
 
 ## Load and format deaths data -------------------------------------------------
 
-deaths_raw <- data.table::fread(
-  config$paths$raw_deaths, encoding=config$encoding, na.strings=c("","NA","n.d.")
-)
+deaths_raw <- ita_fread(config$paths$raw_deaths)
+
 deaths_prepped <- ita_prepare_deaths(
   deaths_raw,
   age_cutoffs = config$age_cutoffs,
@@ -43,9 +47,9 @@ write.csv(
 
 ## Load and format population data ---------------------------------------------
 
-pop_raw <- fread(config$path$raw_pop, encoding=config$encoding, na.strings=c('','NA','n.d.'))
+pop_raw <- ita_fread(config$path$raw_pop)
 
-pop_prepped <- ita_prepare_deaths(pop_raw, age_cutoffs=config$age_cutoffs)
+pop_prepped <- ita_prepare_pop(pop_raw, age_cutoffs=config$age_cutoffs)
 
 write.csv(
   pop_prepped,
@@ -55,4 +59,14 @@ write.csv(
 
 
 ## Load and format covariates --------------------------------------------------
+
+covars_raw <- lapply(config$paths$raw_covars, ita_fread)
+names(covars_raw) <- names(config$paths$raw_covars)
+
+covar_data <- copy(covars_raw$tfr)
+model_years <- config$model_years
+
+
+
+
 
