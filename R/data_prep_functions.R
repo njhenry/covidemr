@@ -219,7 +219,7 @@ backfill_input_data <- function(input_data, index_field, check_vals){
     for(backfill_year in backfill_years){
       # Copy earliest year of data and change the year to the backfill year
       concat_list[[fill_idx]] <- copy(
-        covar_data[(get(index_field) == check_val) & (year==first_data_year),]
+        input_data[(get(index_field) == check_val) & (year==first_data_year),]
       )
       concat_list[[fill_idx]][, year := backfill_year ]
       fill_idx <- fill_idx + 1
