@@ -42,8 +42,8 @@ following settings to download tabulated population data:
 
 Covariates were downloaded by commune for all available years since 2015:
 - Total fertility rate (2015-2018), by province
-- Proportion of targeted families reached by various social services (2015-2017), by province
-- Q1 unemployment by sex, all age groups (2015-2020), by province
+- Proportion of targeted families receiving at-home social services (2015-2017), by province
+- Annual unemployment by sex, ages 15 and above (2015-2019), by province
 
 
 For more recent years where a covariate was missing, the average of the last two

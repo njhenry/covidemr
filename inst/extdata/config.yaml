@@ -3,7 +3,7 @@ paths:
   raw_deaths: '/ihme/homes/nathenry/ita_emr/deaths/comuni_giornaliero_30giugno.csv'
   raw_covars:
     tfr: '/ihme/homes/nathenry/ita_emr/covars/COVAR_tfr_2015_2018_province.csv'
-    unemp: '/ihme/homes/nathenry/ita_emr/covars/COVAR_q1_unemployment_2015_2020_province.csv'
+    unemp: '/ihme/homes/nathenry/ita_emr/covars/COVAR_unemployment_2015_2019_province.csv'
     socserv: '/ihme/homes/nathenry/ita_emr/covars/COVAR_social_services_2015_2017_province.csv'
   prepped_data: '/ihme/homes/nathenry/ita_emr/prepped_data'
   model_results: '/ihme/homes/nathenry/ita_emr/model_results'
