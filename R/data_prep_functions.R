@@ -155,7 +155,7 @@ ita_prepare_pop <- function(pop_raw, age_cutoffs){
     findInterval(pop_raw$age_years, age_groups$age_group_years_start)
     ]
   # Apply fix for Sud Sardegna province
-  pop_raw <- ita_prep_sud_sardegna_fix(pop_raw)
+  # TODO: FIX pop_raw <- ita_prep_sud_sardegna_fix(pop_raw)
 
   # Collapse by identifiers
   pop_agg <- pop_raw[,
@@ -167,47 +167,61 @@ ita_prepare_pop <- function(pop_raw, age_cutoffs){
 }
 
 
-#' Sud Sardegna fix for Italy input data
+#' Backfill missing historical data
 #'
-#' @description Apply a fix to fill estimates for Sud Sardegna province, which
-#'   is generally listed as its previous component provinces through 2016. Sud
-#'   Sardegna is a composite of territories from several now-defunct provinces,
-#'   including the full territories of Medio Campidano and Carbonia-Iglesias
-#'   provinces. Because there is not an exact correspondence with provinces
-#'   before 2017, replicate the oldest available data for Sud Sardegna to
-#'   previous years. This fix should be noted in the README and project
-#'   appendix.
+#' @description Fill missing historical estimates of data using the earliest
+#'   available data value.
 #'
-#' @param covar_data Input data.table containing input data. The fields `icode`
-#'   (char) and `year` (int) are expected
+#' @details This fix is relevant for administrative boundaries that have changed
+#'   over time. At the province level, this is relevant for Sud Sardegna
+#'   province, which is generally listed as its previous component provinces
+#'   through 2016. Sud Sardegna is a composite of territories from several
+#'   now-defunct provinces, including the full territories of Medio Campidano
+#'   and Carbonia-Iglesias provinces. Because there is not an exact
+#'   correspondence with provinces before 2017, replicate the oldest available
+#'   data for Sud Sardegna to previous years.
+#'
+#'   The same issue applies to data preparation for the communes (comuna), which
+#'   have less stable boundaries than regions and provinces. Currently in the
+#'   data preparation workflow, preparing population is required to match the
+#'   subset of communes available for deaths.
+#'
+#' @param input_data Input data.table containing input data. The field `year`
+#'   (int) is expected
+#' @param index_field Field containing unique geographic identifiers by location
+#' @param check_vals Values of the index field to check for backfilling
 #'
 #' @return Updated data.table with values for Sud Sardegna across all years
 #'
 #' @import data.table
-#'
-ita_prep_sud_sardegna_fix <- function(covar_data){
-  # Determine which years the fix is needed for
-  all_years <- sort(unique(covar_data$year))
-  first_ssd_year <- covar_data[icode=='IT111', min(year)]
-  missing_years <- all_years[all_years < first_ssd_year]
+#' @export
+backfill_input_data <- function(input_data, index_field, check_vals){
+  # Determine which years the fix might be needed for
+  all_years <- sort(unique(in_data$year))
 
-  if(length(missing_years) == 0) return(covar_data)
+  # Create list to append backfilled values to
+  concat_list <- lapply(1:(length(all_years) * length(check_vals)), function(x) NULL)
+  concat_list[[1]] <- copy(input_data)
+  fill_idx <- 2
 
-  # Replicate Sud Sardegna data for previous years
-  message(
-    "Filling values for Sud Sardegna in the years ",
-    paste(missing_years, collapse=', ')
-  )
-  filled_ssd_data <- lapply(
-    missing_years,
-    function(yr) copy(covar_data[icode=='IT111' & year==first_ssd_year])[, year := yr ]
-  )
+  # Fill values as needed
+  for(check_val in check_vals){
+    if(!check_val %in% input_data[[index_field]]){
+      stop(paste("Missing index value", check_val))
+    }
+    first_data_year <- input_data[ get(index_field) == check_val, min(year) ]
+    backfill_years <- all_years[all_years < first_data_year]
+    for(backfill_year in backfill_years){
+      # Copy earliest year of data and change the year to the backfill year
+      concat_list[[fill_idx]] <- copy(
+        covar_data[(get(index_field) == check_val) & (year==first_data_year),]
+      )
+      concat_list[[fill_idx]][, year := backfill_year ]
+      fill_idx <- fill_idx + 1
+    }
+  }
 
-  # Recombine and return
-  full_data <- rbindlist(
-    c(list(covar_data), filled_ssd_data),
-    use.names = TRUE,
-    fill = TRUE
-  )
-  return(full_data)
+  # Combine into the final data.table and return
+  filled_data <- rbindlist(concat_list)[order(year)]
+  return(filled_data)
 }

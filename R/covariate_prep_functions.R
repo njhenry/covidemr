@@ -197,7 +197,11 @@ ita_prepare_covar_tfr <- function(covar_data, model_years, location_table){
     by='icode'
   )
   # Apply Sud Sardegna fix
-  covar_data_merged <- ita_prep_sud_sardegna_fix(covar_data_merged)
+  covar_data_merged <- backfill_input_data(
+    input_data = covar_data_merged,
+    index_field = 'icode',
+    check_vals = 'IT111'
+  )
   # Drop unnecessary columns
   covar_indices <- c('location_code', 'year')
   all_cols <- c(covar_indices, 'tfr')
@@ -251,7 +255,11 @@ ita_prepare_covar_unemp <- function(covar_data, model_years, location_table){
     by='icode'
   )
   # Apply Sud Sardegna fix
-  covar_data_merged <- ita_prep_sud_sardegna_fix(covar_data_merged)
+  covar_data_merged <- backfill_input_data(
+    input_data = covar_data_merged,
+    index_field = 'icode',
+    check_vals = 'IT111'
+  )
   covar_data_merged <- covar_data_merged[, c(covar_indices, 'unemp'), with=FALSE]
 
   # Subset columns and extend to 2020 and return
