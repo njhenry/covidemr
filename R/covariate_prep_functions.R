@@ -107,8 +107,8 @@ check_covar_validity <- function(
   missing_cols <- setdiff(all_colnames, names(prepped_covar))
   extra_cols <- setdiff(names(prepped_covar), all_colnames)
   if(missing_cols | extra_cols){
-    if(missing_cols) message(paste("Missing columns: ", missing_cols, collapse=', '))
-    if(extra_cols) message(paste("Extra columns: ", extra_cols, collapse=', '))
+    if(missing_cols) message("Missing columns: ", paste(missing_cols, collapse=', '))
+    if(extra_cols) message("Extra columns: ", paste(extra_cols, collapse=', '))
     stop("Resolve column issues before proceeding")
   }
 
@@ -120,7 +120,7 @@ check_covar_validity <- function(
     if(idx_col %in% covar_indices){
       missing_vals <- setdiff(all_vals, unique(prepped_covar[[idx_col]]))
       if(length(missing_vals) > 0){
-        message(paste0("Missing ", idx_col, ": ", missing_vals, collapse=', '))
+        message("Missing ", idx_col, ": ", paste0(missing_vals, collapse=', '))
         any_missing <- TRUE
       }
     }
@@ -154,7 +154,7 @@ check_covar_validity <- function(
 #' @export
 extend_covar_time_series <- function(covar_data, model_years){
   # Validate inputs: ensure that the year field exists
-  if(!('year' %in% covar_data)) stop("'year' field missing from data")
+  if(!('year' %in% names(covar_data))) stop("'year' field missing from data")
 
   missing_years <- setdiff(model_years, covar_data$year)
   # If no years are missing, return the original data.table
@@ -167,7 +167,7 @@ extend_covar_time_series <- function(covar_data, model_years){
       lapply(missing_years, function(yr) copy(most_recent_year)[, year := yr])
   ))[order(year)]
 
-  message(paste("Extended forward for years", missing_years, collapse=', '))
+  message("Extended forward for years ",paste(missing_years, collapse=', '))
   return(full_data)
 }
 
