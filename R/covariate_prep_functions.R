@@ -283,6 +283,13 @@ ita_prepare_covar_socserv <- function(covar_data, model_years, location_table){
   setnames(covar_data, c('ITTER107', 'TIME', 'Value'), c('icode', 'year', 'socserv'))
   # Subset to just proportion of families/children receiving at home social services
   covar_data <- covar_data[(TIPUTENZA1=='FAM') & (TIPSERVSOC=='HOMECARE'), ]
+
+  # Fix for Sud Sardegna, which is represented by its old defunct provinces
+  covar_ssd <- covar_data[ icode %in% c('ITG2B', 'ITG2C'), .(icode, year, socserv)]
+  covar_ssd[, icode := 'IT111' ]
+  covar_ssd <- covar_ssd[, .(socserv=mean(socserv)), by=.(icode, year)]
+  covar_data <- rbindlist(list(covar_data, covar_ssd), use.names=TRUE, fill=TRUE)
+
   # Merge on location codes
   covar_data_merged <- merge(
     covar_data,
