@@ -10,6 +10,8 @@
 
 # library(covidemr)
 library(data.table)
+library(sp)
+library(sf)
 # DEVELOPMENT: rebuild library
 dev_fp <- '/ihme/code/covid-19/user/nathenry/covidemr/'
 devtools::load_all(dev_fp)
@@ -61,9 +63,11 @@ write.csv(
 ## Load and format covariates --------------------------------------------------
 
 covars_raw <- lapply(config$paths$raw_covars, ita_fread)
-names(covars_raw) <- names(config$paths$raw_covars)
+covar_names <- names(config$paths$raw_covars)
+names(covars_raw) <- covar_names
 
-covars_prepped <- lapply(names(covars_raw), function(covar_name){
+# Prepare
+covars_prepped <- lapply(covar_names, function(covar_name){
   ita_prepare_covariate(
     covars_raw[[covar_name]],
     covar_name,
@@ -71,4 +75,75 @@ covars_prepped <- lapply(names(covars_raw), function(covar_name){
     location_table = location_table
   )
 })
+names(covars_prepped) <- covar_names
 
+
+## Merge deaths, population, and covariates to get prepped input dataset -------
+
+in_data <- merge(
+  x = deaths_prepped,
+  y = pop_prepped, 
+  by = c('location_code', 'year', 'sex', 'age_group_code'),
+  all = TRUE
+)
+for(covar_name in covar_names){
+  in_data <- merge(
+    x = in_data,
+    y = covars_prepped[[covar_name]]$prepped_covar,
+    by = covars_prepped[[covar_name]]$covar_indices,
+    all = TRUE
+  )
+}
+
+# Quick validation
+if(any(is.na(in_data$deaths))) stop("Missing deaths in final dataset")
+if(any(is.na(in_data$pop))) stop("Missing population in final dataset")
+for(covar_name in covar_names){
+  if(any(is.na(in_data[[covar_name]]))) stop(sprintf(
+    "Missing values for covar %s in final dataset", covar_name
+  ))
+}
+
+# Save to file
+write.csv(
+  in_data,
+  file = file.path(prepped_data_dir, config$prepped_data_files$full_data),
+  row.names = FALSE
+)
+
+
+## Load shapefile, create adjacency matrix, and cache both ---------------------
+
+shp_sf <- sf::st_read(config$paths$shp_generalized)
+# Order by location code
+shp_sf$location_code <- sapply(
+  shp_sf$SIGLA, 
+  function(SIG) location_table[abbrev==SIG, location_code]
+)
+shp_sf <- shp_sf[order(shp_sf$location_code), ]
+
+# Create SP version
+shp_sp <- as(shp_sf, "Spatial")
+# Reset polygon IDs to reduce confusion
+for(ii in 1:nrow(shp_sp@data)){
+  shp_sp@polygons[[ii]]@ID <- as.character(shp_sp@data[[ii, 'location_code']])
+}
+
+# Create adjacency matrix
+adjmat <- build_adjacency_matrix(shp_sp)
+
+# Add manual adjacencies for islands:
+#   - Messina, Sicilia (83) <-> Reggio Calabria, mainland (80) - proximity
+#   - Cagliari, Sardinia (92) <-> Roma, mainland (58) - most common flights/ferries
+add_links <- list(c(83, 80), c(92, 58))
+for(add_link in add_links){
+  adjmat[add_link[1], add_link[2]] <- 1
+  adjmat[add_link[2], add_link[1]] <- 1
+}
+
+# Save to file
+saveRDS(shp_sf, file=file.path(prepped_data_dir, config$prepped_data_files$shapefile_sf))
+saveRDS(shp_sp, file=file.path(prepped_data_dir, config$prepped_data_files$shapefile_sp))
+saveRDS(adjmat, file=file.path(prepped_data_dir, config$prepped_data_files$adjacency_matrix))
+
+message("** Data prep complete. **")
