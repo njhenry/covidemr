@@ -251,7 +251,7 @@ ita_prepare_covar_unemp <- function(covar_data, model_years, location_table){
     by='icode'
   )
   # Apply Sud Sardegna fix
-  covar_data <- ita_prep_sud_sardegna_fix(covar_data)
+  covar_data_merged <- ita_prep_sud_sardegna_fix(covar_data_merged)
   covar_data_merged <- covar_data_merged[, c(covar_indices, 'unemp'), with=FALSE]
 
   # Subset columns and extend to 2020 and return
