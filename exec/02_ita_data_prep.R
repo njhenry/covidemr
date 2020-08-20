@@ -63,10 +63,12 @@ write.csv(
 covars_raw <- lapply(config$paths$raw_covars, ita_fread)
 names(covars_raw) <- names(config$paths$raw_covars)
 
-covar_data <- copy(covars_raw$tfr)
-model_years <- config$model_years
-
-
-
-
+covars_prepped <- lapply(names(covars_raw), function(covar_name){
+  ita_prepare_covariate(
+    covars_raw[[covar_name]],
+    covar_name,
+    model_years = config$model_years,
+    location_table = location_table
+  )
+})
 
