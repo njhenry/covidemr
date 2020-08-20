@@ -245,13 +245,13 @@ ita_prepare_covar_unemp <- function(covar_data, model_years, location_table){
   # Fix Bolzano and Trento location codes, then merge on standard code table
   covar_data[ icode == 'ITD1', icode := 'ITD10' ] # Bolzano
   covar_data[ icode == 'ITD2', icode := 'ITD20' ] # Trento
-  # Apply Sud Sardegna fix
-  covar_data_merged <- ita_prep_sud_sardegna_fix(covar_data_merged)
   covar_data_merged <- merge(
     covar_data,
     location_table[, .(location_code, icode)],
     by='icode'
   )
+  # Apply Sud Sardegna fix
+  covar_data <- ita_prep_sud_sardegna_fix(covar_data)
   covar_data_merged <- covar_data_merged[, c(covar_indices, 'unemp'), with=FALSE]
 
   # Subset columns and extend to 2020 and return
