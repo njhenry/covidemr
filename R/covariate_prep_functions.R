@@ -200,6 +200,8 @@ ita_prepare_covar_tfr <- function(covar_data, model_years, location_table){
   covar_indices <- c('location_code', 'year')
   all_cols <- c(covar_indices, 'tfr')
   covar_data_merged <- covar_data_merged[, ..all_cols ]
+  # Apply Sud Sardegna fix
+  covar_data_merged <- ita_prep_sud_sardegna_fix(covar_data_merged)
 
   # Extend years
   prepped_covar <- extend_covar_time_series(
@@ -248,9 +250,11 @@ ita_prepare_covar_unemp <- function(covar_data, model_years, location_table){
     location_table[, .(location_code, icode)],
     by='icode'
   )
+  covar_data_merged <- covar_data_merged[, c(covar_indices, 'unemp'), with=FALSE]
+  # Apply Sud Sardegna fix
+  covar_data_merged <- ita_prep_sud_sardegna_fix(covar_data_merged)
 
   # Subset columns and extend to 2020 and return
-  covar_data_merged <- covar_data_merged[, c(covar_indices, 'unemp'), with=FALSE]
   prepped_covar <- extend_covar_time_series(
     covar_data = covar_data_merged,
     model_years = model_years
@@ -284,7 +288,10 @@ ita_prepare_covar_socserv <- function(covar_data, model_years, location_table){
   # Subset to just proportion of families/children receiving at home social services
   covar_data <- covar_data[(TIPUTENZA1=='FAM') & (TIPSERVSOC=='HOMECARE'), ]
 
-  # Fix for Sud Sardegna, which is represented by its old defunct provinces
+  # Fix for Sud Sardegna, which is represented by its old defunct provinces.
+  # Note that this fix differs from others because Sud Sardegna is not
+  # represented in any years -- instead, the average is taken between Medio
+  # Campidano and Carbonia-Iglesias
   covar_ssd <- covar_data[ icode %in% c('ITG2B', 'ITG2C'), .(icode, year, socserv)]
   covar_ssd[, icode := 'IT111' ]
   covar_ssd <- covar_ssd[, .(socserv=mean(socserv)), by=.(icode, year)]

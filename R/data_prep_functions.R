@@ -154,8 +154,10 @@ ita_prepare_pop <- function(pop_raw, age_cutoffs){
   pop_raw$age_group_code <- age_groups$age_group_code[
     findInterval(pop_raw$age_years, age_groups$age_group_years_start)
     ]
+  # Apply fix for Sud Sardegna province
+  pop_raw <- ita_prep_sud_sardegna_fix(pop_raw)
 
-  ## Collapse by identifiers
+  # Collapse by identifiers
   pop_agg <- pop_raw[,
                      .(pop = sum(Value)),
                      by=.(location_code, year, sex, age_group_code)
@@ -165,3 +167,47 @@ ita_prepare_pop <- function(pop_raw, age_cutoffs){
 }
 
 
+#' Sud Sardegna fix for Italy input data
+#'
+#' @description Apply a fix to fill estimates for Sud Sardegna province, which
+#'   is generally listed as its previous component provinces through 2016. Sud
+#'   Sardegna is a composite of territories from several now-defunct provinces,
+#'   including the full territories of Medio Campidano and Carbonia-Iglesias
+#'   provinces. Because there is not an exact correspondence with provinces
+#'   before 2017, replicate the oldest available data for Sud Sardegna to
+#'   previous years. This fix should be noted in the README and project
+#'   appendix.
+#'
+#' @param covar_data Input data.table containing input data. The fields `icode`
+#'   (char) and `year` (int) are expected
+#'
+#' @return Updated data.table with values for Sud Sardegna across all years
+#'
+#' @import data.table
+#'
+ita_prep_sud_sardegna_fix <- function(covar_data){
+  # Determine which years the fix is needed for
+  all_years <- sort(unique(covar_data$year))
+  first_ssd_year <- covar_data[icode=='IT111', min(year)]
+  missing_years <- all_years[all_years < first_ssd_year]
+
+  if(length(missing_years) == 0) return(covar_data)
+
+  # Replicate Sud Sardegna data for previous years
+  message(
+    "Filling values for Sud Sardegna in the years ",
+    paste(missing_years, collapse=', ')
+  )
+  filled_ssd_data <- lapply(
+    missing_years,
+    function(yr) copy(covar_data[icode=='IT111' & year==first_ssd_year])[, year := yr ]
+  )
+
+  # Recombine and return
+  full_data <- rbindlist(
+    c(list(covar_data), filled_ssd_data),
+    use.names = TRUE,
+    fill = TRUE
+  )
+  return(full_data)
+}
