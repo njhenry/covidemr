@@ -66,7 +66,7 @@ get_covar_prep_function <- function(covar_name){
   # Search for prep functions
   f_pattern <- 'ita_prepare_covar_'
   potential_f_name <- paste0(f_pattern, covar_name)
-  all_prep_functions <- ls(pattern=sprintf("^%s",f_pattern))
+  all_prep_functions <- ls('package:covidemr', pattern=sprintf("^%s",f_pattern))
   if(potential_f_name %in% all_prep_functions){
     return(potential_f_name)
   } else {
@@ -106,7 +106,7 @@ check_covar_validity <- function(
   all_colnames <- c(covar_name, covar_indices)
   missing_cols <- setdiff(all_colnames, names(prepped_covar))
   extra_cols <- setdiff(names(prepped_covar), all_colnames)
-  if(missing_cols | extra_cols){
+  if(length(c(missing_cols, extra_cols)) > 0){
     if(missing_cols) message("Missing columns: ", paste(missing_cols, collapse=', '))
     if(extra_cols) message("Extra columns: ", paste(extra_cols, collapse=', '))
     stop("Resolve column issues before proceeding")
@@ -187,7 +187,25 @@ extend_covar_time_series <- function(covar_data, model_years){
 #' @import data.table
 #' @export
 ita_prepare_covar_tfr <- function(covar_data, model_years, location_table){
-  # Prepare covariate
+
+  setnames(covar_data, c('ITTER107','TIME','Value'), c('icode', 'year', 'tfr'))
+
+  # Merge on location codes
+  covar_data_merged <- merge(
+    covar_data,
+    location_table[, .(icode, location_code)],
+    by='icode'
+  )
+  # Drop unnecessary columns
+  covar_indices <- c('location_code', 'year')
+  all_cols <- c(covar_indices, 'tfr')
+  covar_data_merged <- covar_data_merged[, ..all_cols ]
+
+  # Extend years
+  prepped_covar <- extend_covar_time_series(
+    covar_data = covar_data_merged,
+    model_years = model_years
+  )
 
   # Return
   return(list(prepped_covar = prepped_covar, covar_indices = covar_indices))
