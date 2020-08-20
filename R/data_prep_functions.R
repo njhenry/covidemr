@@ -197,7 +197,7 @@ ita_prepare_pop <- function(pop_raw, age_cutoffs){
 #' @export
 backfill_input_data <- function(input_data, index_field, check_vals){
   # Determine which years the fix might be needed for
-  all_years <- sort(unique(in_data$year))
+  all_years <- sort(unique(input_data$year))
 
   # Create list to append backfilled values to
   concat_list <- lapply(1:(length(all_years) * length(check_vals)), function(x) NULL)
