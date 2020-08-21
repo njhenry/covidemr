@@ -1,5 +1,5 @@
 paths:
-  raw_pop: '/ihme/homes/nathenry/ita_emr/pop/pop_all_by_province.csv'
+  raw_pop_dir: '/ihme/homes/nathenry/ita_emr/pop/pop_all_by_province.csv'
   raw_deaths: '/ihme/homes/nathenry/ita_emr/deaths/comuni_giornaliero_30giugno.csv'
   raw_covars:
     tfr: '/ihme/homes/nathenry/ita_emr/covars/COVAR_tfr_2015_2018_province.csv'
@@ -20,6 +20,7 @@ prepped_data_files:
   adjacency_matrix: 'adjmat.RDS'
 model_years: [2015, 2016, 2017, 2018, 2019, 2020]
 age_cutoffs: [0, 15, 30, 45, 60, 75]
+model_week_range: [1, 26]
 first_death_date: '2020-03-01' # In YYYY-MM-DD format
 pop_identifiers: ['age_group_code','sex','year','location_code']
 death_identifiers: ['age_group_code','sex','year','week','location_code']
