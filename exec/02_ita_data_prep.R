@@ -69,7 +69,7 @@ names(covars_raw) <- covar_names
 # Prepare
 covars_prepped <- lapply(covar_names, function(covar_name){
   ita_prepare_covariate(
-    covars_raw[[covar_name]],
+    copy(covars_raw[[covar_name]]),
     covar_name,
     model_years = config$model_years,
     location_table = location_table
