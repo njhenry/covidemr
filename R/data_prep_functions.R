@@ -155,7 +155,7 @@ ita_prepare_pop <- function(pop_raw, age_cutoffs){
     findInterval(pop_raw$age_years, age_groups$age_group_years_start)
     ]
   # Apply fix for Sud Sardegna province
-  # TODO: FIX pop_raw <- ita_prep_sud_sardegna_fix(pop_raw)
+  pop_raw <- backfill_input_data(pop_raw, index_field='icode', check_vals='IT111')
 
   # Collapse by identifiers
   pop_agg <- pop_raw[,
