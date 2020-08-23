@@ -9,7 +9,7 @@ paths:
   model_results: '/ihme/homes/nathenry/ita_emr/model_results'
   shp_detailed: '/ihme/homes/nathenry/ita_emr/shp/Limiti01012020/ProvCM01012020/ProvCM01012020_WGS84.shp'
   shp_generalized: '/ihme/homes/nathenry/ita_emr/shp/Limiti01012020_g/ProvCM01012020_g/ProvCM01012020_g_WGS84.shp'
-prepped_data_version: '20200818'
+  tmb_template: '/ihme/code/covid-19/users/nathenry/covidemr/src/mort_stwa.cpp'
 prepped_data_files:
   location_table: 'location_table.csv'
   population: 'prepped_pop.csv'
