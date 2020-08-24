@@ -60,6 +60,8 @@ Type objective_function<Type>::operator() () {
 
   // INPUT DATA --------------------------------------------------------------->
 
+    DATA_INTEGER(flag);
+
     // OPTION: Holdout number
     // Any observation where `idx_holdout` is equal to `holdout` will be 
     //   excluded from this model fit
@@ -136,9 +138,9 @@ Type objective_function<Type>::operator() () {
     // Type rho_age_twa = rho_transform(rho_age_trans_twa);
 
     // Convert from log-sigma (-Inf, Inf) to sigmas (must be positive)
-    Type sigma_loc_sta = exp(log_sigma_loc_sta);
-    Type sigma_year_sta = exp(log_sigma_year_sta);
-    Type sigma_age_sta = exp(log_sigma_age_sta);
+    // Type sigma_loc_sta = exp(log_sigma_loc_sta);
+    // Type sigma_year_sta = exp(log_sigma_year_sta);
+    // Type sigma_age_sta = exp(log_sigma_age_sta);
     // Type sigma_year_twa = exp(log_sigma_year_twa);
     // Type sigma_week_twa = exp(log_sigma_week_twa);
     // Type sigma_age_twa = exp(log_sigma_age_twa);
@@ -169,20 +171,23 @@ Type objective_function<Type>::operator() () {
     }
 
     // N(0, 3) prior for sigmas
-    PARALLEL_REGION jnll -= dnorm(sigma_loc_sta, Type(0.0), Type(3.0), true);
-    PARALLEL_REGION jnll -= dnorm(sigma_year_sta, Type(0.0), Type(3.0), true);
-    PARALLEL_REGION jnll -= dnorm(sigma_age_sta, Type(0.0), Type(3.0), true);
+    // PARALLEL_REGION jnll -= dnorm(sigma_loc_sta, Type(0.0), Type(3.0), true);
+    // PARALLEL_REGION jnll -= dnorm(sigma_year_sta, Type(0.0), Type(3.0), true);
+    // PARALLEL_REGION jnll -= dnorm(sigma_age_sta, Type(0.0), Type(3.0), true);
     // PARALLEL_REGION jnll -= dnorm(sigma_year_twa, Type(0.0), Type(3.0), true);
     // PARALLEL_REGION jnll -= dnorm(sigma_week_twa, Type(0.0), Type(3.0), true);
     // PARALLEL_REGION jnll -= dnorm(sigma_age_twa, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_nugget, Type(0.0), Type(3.0), true);
 
     // Evaluation of separable space-year-age random effect surface
-    PARALLEL_REGION jnll += SEPARABLE( \
-        SCALE(AR1(rho_age_sta), sigma_age_sta), SEPARABLE( \ 
-        SCALE(AR1(rho_year_sta), sigma_year_sta), \
-        SCALE(GMRF(loc_structure), sigma_loc_sta) \
-    ))(Z_sta);
+    // PARALLEL_REGION jnll += SEPARABLE( \
+    //     SCALE(AR1(rho_age_sta), sigma_age_sta), SEPARABLE( \ 
+    //     SCALE(AR1(rho_year_sta), sigma_year_sta), \
+    //     SCALE(GMRF(loc_structure, false), sigma_loc_sta) \
+    // ))(Z_sta);
+    PARALLEL_REGION jnll += SEPARABLE(\
+        AR1(rho_age_sta), SEPARABLE(AR1(rho_year_sta), GMRF(loc_structure, false))\
+    )(Z_sta);
 
     // Evaluation of separable year-week-age random effect surface
     // PARALLEL_REGION jnll += SEPARABLE( \ 
@@ -195,6 +200,8 @@ Type objective_function<Type>::operator() () {
     for(int i = 0; i < num_obs; i++){
       PARALLEL_REGION jnll -= dnorm(nugget[i], Type(0.0), sigma_nugget, true);
     }
+
+    if(flag == 0) return jnll;
 
 
   // JNLL CONTRIBUTION FROM DATA ---------------------------------------------->
