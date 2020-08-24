@@ -205,7 +205,8 @@ Type objective_function<Type>::operator() () {
     for(int i=0; i < num_obs; i++){
       if(idx_holdout[i] != holdout){
         // Determine structured random effect component for this observation
-        struct_res_i[i] = Z_stwa[idx_loc[i], idx_year[i], idx_week[i], idx_age[i]];
+        struct_res_i[i] = Z_sta[idx_loc[i], idx_year[i], idx_age[i]] + \
+            Z_twa[idx_year[i], idx_week[i], idx_age[i]];
         //
         // Determine center of Poisson distribution for this observation:
         // Lambda = exp(log risk) * exposure * normalizing constant for week size
