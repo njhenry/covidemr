@@ -113,9 +113,10 @@ Type objective_function<Type>::operator() () {
     // PARAMETER(rho_age_trans_twa);  // By age group
 
     // Variance of space-time-age-year random effect
-    PARAMETER(log_sigma_loc_sta);
-    PARAMETER(log_sigma_year_sta);
-    PARAMETER(log_sigma_age_sta);
+    PARAMETER(log_sigma_sta);
+    // PARAMETER(log_sigma_loc_sta);
+    // PARAMETER(log_sigma_year_sta);
+    // PARAMETER(log_sigma_age_sta);
     // PARAMETER(log_sigma_year_twa);
     // PARAMETER(log_sigma_week_twa);
     // PARAMETER(log_sigma_age_twa);
@@ -138,6 +139,7 @@ Type objective_function<Type>::operator() () {
     // Type rho_age_twa = rho_transform(rho_age_trans_twa);
 
     // Convert from log-sigma (-Inf, Inf) to sigmas (must be positive)
+    Type sigma_sta = exp(log_sigma_sta);
     // Type sigma_loc_sta = exp(log_sigma_loc_sta);
     // Type sigma_year_sta = exp(log_sigma_year_sta);
     // Type sigma_age_sta = exp(log_sigma_age_sta);
@@ -171,6 +173,7 @@ Type objective_function<Type>::operator() () {
     }
 
     // N(0, 3) prior for sigmas
+    PARALLEL_REGION jnll -= dnorm(sigma_sta, Type(0.0), Type(3.0), true);
     // PARALLEL_REGION jnll -= dnorm(sigma_loc_sta, Type(0.0), Type(3.0), true);
     // PARALLEL_REGION jnll -= dnorm(sigma_year_sta, Type(0.0), Type(3.0), true);
     // PARALLEL_REGION jnll -= dnorm(sigma_age_sta, Type(0.0), Type(3.0), true);
@@ -185,9 +188,9 @@ Type objective_function<Type>::operator() () {
     //     SCALE(AR1(rho_year_sta), sigma_year_sta), \
     //     SCALE(GMRF(loc_structure, false), sigma_loc_sta) \
     // ))(Z_sta);
-    PARALLEL_REGION jnll += SEPARABLE(\
+    PARALLEL_REGION jnll += SCALE(SEPARABLE(\
         AR1(rho_age_sta), SEPARABLE(AR1(rho_year_sta), GMRF(loc_structure, false))\
-    )(Z_sta);
+    ), sigma_sta)(Z_sta);
 
     // Evaluation of separable year-week-age random effect surface
     // PARALLEL_REGION jnll += SEPARABLE( \ 
