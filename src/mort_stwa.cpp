@@ -90,30 +90,24 @@ Type objective_function<Type>::operator() () {
     PARAMETER_VECTOR(beta_ages); // Vector of fixed effects on age group
 
     // Correlated random effect surface
-    // 3-dimensional array of size: (# locations) x (# years) x (# ages)
-    PARAMETER_ARRAY(Z_sta);
-    // 3-dimensional array of size: (# years) x (# weeks) x (# ages)
-    // PARAMETER_ARRAY(Z_twa);
+    // 4-dimensional array of size: (# locations) x (# years) x (# weeks) x (# ages)
+    PARAMETER_ARRAY(Z_stwa);
 
     // Nugget
     // Vector of random effects, same length as number of observations
     PARAMETER_VECTOR(nugget);
 
     // Random effect autocorrelation parameters, transformed scale
-    PARAMETER(rho_loc_trans_sta);  // By location
-    PARAMETER(rho_year_trans_sta); // By year
-    PARAMETER(rho_age_trans_sta);  // By age group
-    // PARAMETER(rho_year_trans_twa); // By year
-    // PARAMETER(rho_week_trans_twa); // By week
-    // PARAMETER(rho_age_trans_twa);  // By age group
+    PARAMETER(rho_loc_trans);  // By location
+    PARAMETER(rho_year_trans); // By year
+    PARAMETER(rho_week_trans); // By week
+    PARAMETER(rho_age_trans);  // By age group
 
     // Variance of space-time-age-year random effect
-    PARAMETER(log_sigma_loc_sta);
-    PARAMETER(log_sigma_year_sta);
-    PARAMETER(log_sigma_age_sta);
-    // PARAMETER(log_sigma_year_twa);
-    // PARAMETER(log_sigma_week_twa);
-    // PARAMETER(log_sigma_age_twa);
+    PARAMETER(log_sigma_loc);
+    PARAMETER(log_sigma_year);
+    PARAMETER(log_sigma_week);
+    PARAMETER(log_sigma_age);
     PARAMETER(log_sigma_nugget);
 
 
@@ -125,25 +119,21 @@ Type objective_function<Type>::operator() () {
 
     // Transform some of our parameters
     // - Convert rho from (-Inf, Inf) to (-1, 1)
-    Type rho_loc_sta = rho_transform(rho_loc_trans_sta);
-    Type rho_year_sta = rho_transform(rho_year_trans_sta);
-    Type rho_age_sta = rho_transform(rho_age_trans_sta);
-    // Type rho_year_twa = rho_transform(rho_year_trans_twa);
-    // Type rho_week_twa = rho_transform(rho_week_trans_twa);
-    // Type rho_age_twa = rho_transform(rho_age_trans_twa);
+    Type rho_loc = rho_transform(rho_loc_trans);
+    Type rho_year = rho_transform(rho_year_trans);
+    Type rho_week = rho_transform(rho_week_trans);
+    Type rho_age = rho_transform(rho_age_trans);
 
     // Convert from log-sigma (-Inf, Inf) to sigmas (must be positive)
-    Type sigma_loc_sta = exp(log_sigma_loc_sta);
-    Type sigma_year_sta = exp(log_sigma_year_sta);
-    Type sigma_age_sta = exp(log_sigma_age_sta);
-    // Type sigma_year_twa = exp(log_sigma_year_twa);
-    // Type sigma_week_twa = exp(log_sigma_week_twa);
-    // Type sigma_age_twa = exp(log_sigma_age_twa);
+    Type sigma_loc = exp(log_sigma_loc);
+    Type sigma_year = exp(log_sigma_year);
+    Type sigma_week = exp(log_sigma_week);
+    Type sigma_age = exp(log_sigma_age);
     Type sigma_nugget = exp(log_sigma_nugget);
 
     // Create the LCAR covariance matrix 
-    SparseMatrix<Type> loc_structure = lcar_q_from_graph(\
-        loc_adj_mat, sigma_loc_sta, rho_loc_sta\
+    SparseMatrix<Type> loc_Q = lcar_q_from_graph(\
+        loc_adj_mat, sigma_loc, rho_loc\
     );
 
     // Vectors of fixed and structured random effects for all data points
@@ -167,30 +157,24 @@ Type objective_function<Type>::operator() () {
     }
 
     // N(0, 3) prior for sigmas
-    PARALLEL_REGION jnll -= dnorm(sigma_loc_sta, Type(0.0), Type(3.0), true);
-    PARALLEL_REGION jnll -= dnorm(sigma_year_sta, Type(0.0), Type(3.0), true);
-    PARALLEL_REGION jnll -= dnorm(sigma_age_sta, Type(0.0), Type(3.0), true);
-    // PARALLEL_REGION jnll -= dnorm(sigma_year_twa, Type(0.0), Type(3.0), true);
-    // PARALLEL_REGION jnll -= dnorm(sigma_week_twa, Type(0.0), Type(3.0), true);
-    // PARALLEL_REGION jnll -= dnorm(sigma_age_twa, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(sigma_loc, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(sigma_year, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(sigma_week, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(sigma_age, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_nugget, Type(0.0), Type(3.0), true);
 
     // Evaluation of separable space-year-age random effect surface
     // Rescale AR1 in age and time; spatial RE has already been scaled
     PARALLEL_REGION jnll += SEPARABLE(\
-        SCALE(AR1(rho_age_sta), sigma_age_sta),\
+        SCALE(AR1(rho_age), sigma_age),\
         SEPARABLE(\
-            SCALE(AR1(rho_year_sta), sigma_year_sta),\
-            GMRF(loc_structure, false)\
+            SCALE(AR1(rho_week), sigma_week),\
+            SEPARABLE(\
+                SCALE(AR1(rho_year), sigma_year),\
+                GMRF(loc_Q, false)\
+            )\
         )\
-    )(Z_sta);
-
-    // Evaluation of separable year-week-age random effect surface
-    // PARALLEL_REGION jnll += SEPARABLE( \ 
-    //     SCALE(AR1(rho_age_twa), sigma_age_twa), SEPARABLE( \
-    //     SCALE(AR1(rho_week_twa), sigma_week_twa), \
-    //     SCALE(AR1(rho_year_twa), rho_year_twa) \
-    // ))(Z_twa);
+    )(Z_stwa);
 
     // Evaluation of nugget
     for(int i = 0; i < num_obs; i++){
@@ -208,9 +192,7 @@ Type objective_function<Type>::operator() () {
     for(int i=0; i < num_obs; i++){
       if(idx_holdout[i] != holdout){
         // Determine structured random effect component for this observation
-        // struct_res_i[i] = Z_sta[idx_loc[i], idx_year[i], idx_age[i]] + \
-        //     Z_twa[idx_year[i], idx_week[i], idx_age[i]];
-        struct_res_i[i] = Z_sta[idx_loc[i], idx_year[i], idx_age[i]];
+        struct_res_i[i] = Z_stwa[idx_loc[i], idx_year[i], idx_week[i], idx_age[i]];
         
         // Determine logit probability for this observation
         log_prob_i[i] = fes_i[i] + beta_ages[idx_age[i]] + struct_res_i[i] + nugget[i];
