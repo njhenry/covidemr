@@ -114,7 +114,8 @@ params_list <- list(
   # Rho parameters
   rho_loc_trans = 1, rho_year_trans = 1, rho_week_trans = 1, rho_age_trans = 1,
   # Variance parameters
-  log_sigma_Z = 0, log_sigma_nugget = 0 
+  log_sigma_loc = 0, log_sigma_year = 0, log_sigma_week = 0, log_sigma_age = 0,
+  log_sigma_nugget = 0 
 )
 
 
@@ -123,8 +124,7 @@ if(length(params_list$beta_ages) == 1){
   tmb_map <- list()
 } else {
   tmb_map = list(
-    beta_ages = as.factor(c(NA, 2:length(params_list$beta_ages))),
-    nugget = as.factor(rep(NA, length(params_list$nugget)))
+    beta_ages = as.factor(c(NA, 2:length(params_list$beta_ages)))
   )
 }
 
@@ -134,7 +134,7 @@ model_fit <- setup_run_tmb(
   params_list=params_list,
   tmb_random=c('Z_stwa','nugget'),
   tmb_map=tmb_map,
-  normalize = FALSE, run_symbolic_analysis = FALSE,
+  normalize = FALSE, run_symbolic_analysis = TRUE,
   tmb_outer_maxsteps=1000, tmb_inner_maxsteps=1000, 
   model_name="ITA deaths model", verbose=TRUE
 )

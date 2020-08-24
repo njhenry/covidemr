@@ -107,7 +107,10 @@ Type objective_function<Type>::operator() () {
     PARAMETER(rho_age_trans);  // By age group
 
     // Variance of space-time-age-year random effect
-    PARAMETER(log_sigma_Z);
+    PARAMETER(log_sigma_loc);
+    PARAMETER(log_sigma_year);
+    PARAMETER(log_sigma_week);
+    PARAMETER(log_sigma_age);
     PARAMETER(log_sigma_nugget);
 
 
@@ -125,7 +128,10 @@ Type objective_function<Type>::operator() () {
     Type rho_age = rho_transform(rho_age_trans);
 
     // Convert from log-sigma (-Inf, Inf) to sigmas (must be positive)
-    Type sigma_Z = exp(log_sigma_Z);
+    Type sigma_loc = exp(log_sigma_loc);
+    Type sigma_year = exp(log_sigma_year);
+    Type sigma_week = exp(log_sigma_week);
+    Type sigma_age = exp(log_sigma_age);
     Type sigma_nugget = exp(log_sigma_nugget);
 
     // Create the LCAR covariance matrix 
@@ -153,18 +159,26 @@ Type objective_function<Type>::operator() () {
     }
 
     // N(0, 3) prior for sigmas
-    PARALLEL_REGION jnll -= dnorm(log_sigma_Z, Type(0.0), Type(3.0), true);
-    PARALLEL_REGION jnll -= dnorm(log_sigma_nugget, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(sigma_loc, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(sigma_year, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(sigma_week, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(sigma_age, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(sigma_nugget, Type(0.0), Type(3.0), true);
 
     // Evaluation of separable space-year-week-age random effect surface
-    PARALLEL_REGION jnll += SCALE(SEPARABLE( \
-        AR1(rho_age), SEPARABLE(AR1(rho_week), SEPARABLE(AR1(rho_year), GMRF(loc_structure))) \
-      ), sigma_Z)(Z_stwa);
+    PARALLEL_REGION jnll += SEPARABLE( \
+        SCALE(AR1(rho_age), sigma_age), SEPARABLE( \ 
+        SCALE(AR1(rho_week), sigma_week), SEPARABLE( \ 
+        SCALE(AR1(rho_year), sigma_year), \
+        SCALE(GMRF(loc_structure, false), sigma_loc) \
+    )))(Z_stwa);
 
     // Evaluation of nugget
     for(int i = 0; i < num_obs; i++){
       PARALLEL_REGION jnll -= dnorm(nugget[i], Type(0.0), sigma_nugget, true);
     }
+
+    if(flag == 0) return jnll;
 
 
   // JNLL CONTRIBUTION FROM DATA ---------------------------------------------->
