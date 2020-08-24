@@ -36,16 +36,6 @@ SparseMatrix<Type> lcar_q_from_graph(SparseMatrix<Type> graph, Type sigma, Type 
   return Q;
 }
 
-// Robust Inverse Logit that sets min and max values to avoid numerical instability
-template<class Type>
-Type invlogit_robust(Type x){
-  if (x < -20.723){
-    x = -20.723; // corresponds to p=1e-9
-  } else if ( x > 20.723 ){
-    x = 20.723;  // corresponds to p=1-1e-9
-  }
-  return 1 / (1 + exp( -1.0 * x ));
-}
 
 // Transformation from (-Inf, Inf) to (-1, 1) for all rho parameters
 template<class Type>
@@ -152,15 +142,16 @@ Type objective_function<Type>::operator() () {
     Type sigma_nugget = exp(log_sigma_nugget);
 
     // Create the LCAR covariance matrix 
-    SparseMatrix<Type> loc_structure = lcar_q_from_graph(adjmat, sigma_loc_sta, rho_loc_sta);
+    SparseMatrix<Type> loc_structure = lcar_q_from_graph(\
+        loc_adj_mat, sigma_loc_sta, rho_loc_sta\
+    );
 
     // Vectors of fixed and structured random effects for all data points
     vector<Type> fes_i(num_obs);
     vector<Type> struct_res_i(num_obs);
 
     // Create a vector to hold individual data estimates
-    vector<Type> logit_prob_i(num_obs);
-    logit_prob_i.setZero();
+    vector<Type> log_prob_i(num_obs);
 
 
   // Instantiate joint negative log-likelihood -------------------------------->
@@ -176,7 +167,6 @@ Type objective_function<Type>::operator() () {
     }
 
     // N(0, 3) prior for sigmas
-    PARALLEL_REGION jnll -= dnorm(sigma_sta, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_loc_sta, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_year_sta, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_age_sta, Type(0.0), Type(3.0), true);
@@ -186,16 +176,12 @@ Type objective_function<Type>::operator() () {
     PARALLEL_REGION jnll -= dnorm(sigma_nugget, Type(0.0), Type(3.0), true);
 
     // Evaluation of separable space-year-age random effect surface
-    // PARALLEL_REGION jnll += SEPARABLE( \
-    //     SCALE(AR1(rho_age_sta), sigma_age_sta), SEPARABLE( \ 
-    //     SCALE(AR1(rho_year_sta), sigma_year_sta), \
-    //     SCALE(GMRF(loc_structure, false), sigma_loc_sta) \
-    // ))(Z_sta);
+    // Rescale AR1 in age and time; spatial RE has already been scaled
     PARALLEL_REGION jnll += SEPARABLE(\
         SCALE(AR1(rho_age_sta), sigma_age_sta),\
         SEPARABLE(\
             SCALE(AR1(rho_year_sta), sigma_year_sta),\
-            GMRF(loc_structure, false)\ // Spatial RE has already been scaled
+            GMRF(loc_structure, false)\
         )\
     )(Z_sta);
 
