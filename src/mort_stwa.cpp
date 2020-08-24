@@ -145,7 +145,7 @@ Type objective_function<Type>::operator() () {
     Type sigma_nugget = exp(log_sigma_nugget);
 
     // Create the LCAR covariance matrix 
-    SparseMatrix<Type> loc_structure = lcar_strmat(loc_adj_mat, rho_loc);
+    SparseMatrix<Type> loc_structure = lcar_strmat(loc_adj_mat, rho_loc_sta);
 
     // Vectors of fixed and structured random effects for all data points
     vector<Type> fes_i(num_obs);
