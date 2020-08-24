@@ -60,6 +60,10 @@ Type objective_function<Type>::operator() () {
 
   // INPUT DATA --------------------------------------------------------------->
 
+    // Flag for normalization fix
+    // flag == 0 --> Return likelihood from prior only
+    DATA_INTEGER(flag);
+
     // OPTION: Holdout number
     // Any observation where `idx_holdout` is equal to `holdout` will be 
     //   excluded from this model fit
