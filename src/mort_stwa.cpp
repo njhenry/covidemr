@@ -60,11 +60,6 @@ Type objective_function<Type>::operator() () {
 
   // INPUT DATA --------------------------------------------------------------->
 
-    // OPTION: Flag for normalization
-    // If flag == 0, return jnll incorporating only prior to calculate the 
-    //   normalizing constant.
-    DATA_INTEGER(flag);
-
     // OPTION: Holdout number
     // Any observation where `idx_holdout` is equal to `holdout` will be 
     //   excluded from this model fit
@@ -163,16 +158,13 @@ Type objective_function<Type>::operator() () {
 
     // Evaluation of separable space-year-week-age random effect surface
     PARALLEL_REGION jnll += SCALE(SEPARABLE( \
-        AR1(rho_age), SEPARABLE(AR1(rho_week), SEPARABLE(AR1(rho_year), GMRF(loc_structure, false))) \
+        AR1(rho_age), SEPARABLE(AR1(rho_week), SEPARABLE(AR1(rho_year), GMRF(loc_structure))) \
       ), sigma_Z)(Z_stwa);
 
     // Evaluation of nugget
     for(int i = 0; i < num_obs; i++){
       PARALLEL_REGION jnll -= dnorm(nugget[i], Type(0.0), sigma_nugget, true);
     }
-
-    // Return un-normalized density on request
-    if (flag == 0) return jnll;
 
 
   // JNLL CONTRIBUTION FROM DATA ---------------------------------------------->

@@ -18,7 +18,7 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 ## Settings 
 ## TODO: Convert to command line
 run_sex <- 'male'
-prepped_data_version <- '20200818'
+prepped_data_version <- '20200823'
 holdout <- 0
 use_covs <- c('intercept','tfr','unemp','socserv')
 
@@ -81,6 +81,7 @@ in_data_final <- prepped_data[(deaths<pop) & (sex==run_sex) & (in_baseline==1), 
 
 
 data_stack <- list(
+  flag = 1,
   holdout = holdout,
   y_i = in_data_final$deaths,
   n_i = in_data_final$pop,
@@ -122,7 +123,8 @@ if(length(params_list$beta_ages) == 1){
   tmb_map <- list()
 } else {
   tmb_map = list(
-    beta_ages = as.factor(c(NA, 2:length(params_list$beta_ages)))
+    beta_ages = as.factor(c(NA, 2:length(params_list$beta_ages))),
+    nugget = as.factor(rep(NA, length(params_list$nugget)))
   )
 }
 
@@ -132,7 +134,7 @@ model_fit <- setup_run_tmb(
   params_list=params_list,
   tmb_random=c('Z_stwa','nugget'),
   tmb_map=tmb_map,
-  normalize = TRUE, run_symbolic_analysis = TRUE,
+  normalize = FALSE, run_symbolic_analysis = FALSE,
   tmb_outer_maxsteps=1000, tmb_inner_maxsteps=1000, 
   model_name="ITA deaths model", verbose=TRUE
 )
