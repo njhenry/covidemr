@@ -72,7 +72,7 @@ setup_run_tmb <- function(
     silent=TRUE
   )
   obj$env$tracemgc <- as.integer(verbose)
-  obj$env$inner.control$trace <- 0
+  obj$env$inner.control$trace <- as.integer(verbose)
   tictoc::toc()
   # Optionally run a normalization fix for models with large random effect sets
   if(normalize){
@@ -96,11 +96,11 @@ setup_run_tmb <- function(
     fe_lower_vec = rep(limit_min, times=length(fe_names))
     fe_upper_vec = rep(limit_max, times=length(fe_names))
     names(fe_lower_vec) <- names(fe_upper_vec) <- fe_names
+    vbmsg(glue::glue("Fixed effects limited to the range [{limit_min},{limit_max}]."))
   } else {
     fe_lower_vec <- -Inf
     fe_upper_vec <- Inf
   }
-  vbmsg(glue::glue("Fixed effects limited to the range [{limit_min},{limit_max}]."))
   # Optimize using nlminb
   vbmsg("Optimizing using nlminb:")
   tictoc::tic("  Optimization")
