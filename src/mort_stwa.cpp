@@ -20,15 +20,20 @@ using Eigen::SparseMatrix;
 
 // HELPER FUNCTIONS ----------------------------------------------------------->
 
-// Function for preparing a LCAR RE structure matrix given a neighborhood graph 
-//  and rho parameter
-// Adapted from Laura Dwyer-Lindgren
+// Function for preparing a LCAR precision matrix based on an adjacency matrix
+//  and a distribution
+// Taken from MacNab 2011, adapted from the `ar.matrix` package:
+// https://rdrr.io/cran/ar.matrix/src/R/Q.lCAR.R
 template<class Type> 
-SparseMatrix<Type> lcar_strmat(SparseMatrix<Type> graph, Type rho) {
-  SparseMatrix<Type> K = rho * graph; 
-  for (int i = 0; i < K.rows(); i++)
-    K.coeffRef(i,i) += (1 - rho);
-  return K; 
+SparseMatrix<Type> lcar_q_from_graph(SparseMatrix<Type> graph, Type sigma, Type rho){
+  SparseMatrix<Type> D(graph.rows(), graph.cols());
+  SparseMatrix<Type> I(graph.rows(), graph.cols());
+  for(int ii=0; ii < D.rows(); ii ++){
+    D.insert(ii, ii) = graph.col(ii).sum();
+    I.insert(ii, ii) = 1.0;
+  }
+  SparseMatrix<Type> Q = 1/sigma * (rho * (D - graph) + (1 - rho) * I);
+  return Q;
 }
 
 // Robust Inverse Logit that sets min and max values to avoid numerical instability
@@ -113,10 +118,9 @@ Type objective_function<Type>::operator() () {
     // PARAMETER(rho_age_trans_twa);  // By age group
 
     // Variance of space-time-age-year random effect
-    PARAMETER(log_sigma_sta);
-    // PARAMETER(log_sigma_loc_sta);
-    // PARAMETER(log_sigma_year_sta);
-    // PARAMETER(log_sigma_age_sta);
+    PARAMETER(log_sigma_loc_sta);
+    PARAMETER(log_sigma_year_sta);
+    PARAMETER(log_sigma_age_sta);
     // PARAMETER(log_sigma_year_twa);
     // PARAMETER(log_sigma_week_twa);
     // PARAMETER(log_sigma_age_twa);
@@ -139,17 +143,16 @@ Type objective_function<Type>::operator() () {
     // Type rho_age_twa = rho_transform(rho_age_trans_twa);
 
     // Convert from log-sigma (-Inf, Inf) to sigmas (must be positive)
-    Type sigma_sta = exp(log_sigma_sta);
-    // Type sigma_loc_sta = exp(log_sigma_loc_sta);
-    // Type sigma_year_sta = exp(log_sigma_year_sta);
-    // Type sigma_age_sta = exp(log_sigma_age_sta);
+    Type sigma_loc_sta = exp(log_sigma_loc_sta);
+    Type sigma_year_sta = exp(log_sigma_year_sta);
+    Type sigma_age_sta = exp(log_sigma_age_sta);
     // Type sigma_year_twa = exp(log_sigma_year_twa);
     // Type sigma_week_twa = exp(log_sigma_week_twa);
     // Type sigma_age_twa = exp(log_sigma_age_twa);
     Type sigma_nugget = exp(log_sigma_nugget);
 
     // Create the LCAR covariance matrix 
-    SparseMatrix<Type> loc_structure = lcar_strmat(loc_adj_mat, rho_loc_sta);
+    SparseMatrix<Type> loc_structure = lcar_q_from_graph(adjmat, sigma_loc_sta, rho_loc_sta);
 
     // Vectors of fixed and structured random effects for all data points
     vector<Type> fes_i(num_obs);
@@ -174,9 +177,9 @@ Type objective_function<Type>::operator() () {
 
     // N(0, 3) prior for sigmas
     PARALLEL_REGION jnll -= dnorm(sigma_sta, Type(0.0), Type(3.0), true);
-    // PARALLEL_REGION jnll -= dnorm(sigma_loc_sta, Type(0.0), Type(3.0), true);
-    // PARALLEL_REGION jnll -= dnorm(sigma_year_sta, Type(0.0), Type(3.0), true);
-    // PARALLEL_REGION jnll -= dnorm(sigma_age_sta, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(sigma_loc_sta, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(sigma_year_sta, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(sigma_age_sta, Type(0.0), Type(3.0), true);
     // PARALLEL_REGION jnll -= dnorm(sigma_year_twa, Type(0.0), Type(3.0), true);
     // PARALLEL_REGION jnll -= dnorm(sigma_week_twa, Type(0.0), Type(3.0), true);
     // PARALLEL_REGION jnll -= dnorm(sigma_age_twa, Type(0.0), Type(3.0), true);
@@ -188,9 +191,13 @@ Type objective_function<Type>::operator() () {
     //     SCALE(AR1(rho_year_sta), sigma_year_sta), \
     //     SCALE(GMRF(loc_structure, false), sigma_loc_sta) \
     // ))(Z_sta);
-    PARALLEL_REGION jnll += SCALE(SEPARABLE(\
-        AR1(rho_age_sta), SEPARABLE(AR1(rho_year_sta), GMRF(loc_structure, false))\
-    ), sigma_sta)(Z_sta);
+    PARALLEL_REGION jnll += SEPARABLE(\
+        SCALE(AR1(rho_age_sta), sigma_age_sta),\
+        SEPARABLE(\
+            SCALE(AR1(rho_year_sta), sigma_year_sta),\
+            GMRF(loc_structure, false)\ # GMRF has already been scaled
+        )\
+    )(Z_sta);
 
     // Evaluation of separable year-week-age random effect surface
     // PARALLEL_REGION jnll += SEPARABLE( \ 
@@ -220,10 +227,13 @@ Type objective_function<Type>::operator() () {
         struct_res_i[i] = Z_sta[idx_loc[i], idx_year[i], idx_age[i]];
         
         // Determine logit probability for this observation
-        logit_prob_i[i] = fes_i[i] + struct_res_i[i] + nugget[i];
+        log_prob_i[i] = fes_i[i] + struct_res_i[i] + nugget[i];
 
-        PARALLEL_REGION jnll -= dbinom_robust(\
-            y_i[i]*7/days_exp_i[i], n_i[i], logit_prob_i[i], true);
+        PARALLEL_REGION jnll -= dpois(\
+            y_i[i],\
+            exp(log_prob_i[i]) * n_i[i] * days_exp_i[i] / 7.0,\
+            true\
+        );
       }
     }    
 
