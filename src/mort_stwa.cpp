@@ -213,7 +213,7 @@ Type objective_function<Type>::operator() () {
         struct_res_i[i] = Z_sta[idx_loc[i], idx_year[i], idx_age[i]];
         
         // Determine logit probability for this observation
-        log_prob_i[i] = fes_i[i] + beta_ages[idx_age[i]] struct_res_i[i] + nugget[i];
+        log_prob_i[i] = fes_i[i] + beta_ages[idx_age[i]] + struct_res_i[i] + nugget[i];
 
         PARALLEL_REGION jnll -= dpois(\
             y_i[i],\
