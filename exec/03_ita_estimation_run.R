@@ -19,17 +19,19 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 ## TODO: Convert to command line
 run_sex <- 'male'
 prepped_data_version <- '20200818'
+holdout <- 0
+use_covs <- c('intercept','tfr','unemp','socserv')
 
 ## Load and prepare data -------------------------------------------------------
 
 # Load data
 prep_file <- function(key){
   prep_dir <- file.path(config$paths$prepped_data, prepped_data_version)
-  return(file.path(prep_dir, config$prepped_data_files[[key]])))
+  return(file.path(prep_dir, config$prepped_data_files[[key]]))
 }
 prepped_data <- fread(prep_file('full_data'))
 location_table <- fread(prep_file('location_table'))
-adjmat <- fread(prep_file('adjacency_matrix'))
+adjmat <- readRDS(prep_file('adjacency_matrix'))
 
 # Prepare the following required inputs for modeling:
 # Input data stack:
@@ -47,36 +49,62 @@ adjmat <- fread(prep_file('adjacency_matrix'))
 # Additional data:
 #  - Table associating province/age/time values with random effect indices
 
-# Set up random effects indices
-age_groups <- create_age_groups(config$age_cutoffs)[order()]
+## Set up random effects indices
+age_groups <- create_age_groups(config$age_cutoffs)
+age_groups[, idx_age := age_group_code - min(age_group_code) ]
 
+year_dt <- data.table(year=sort(config$model_years))
+year_dt[, idx_year := .I - 1 ]
+
+week_dt <- data.table(week = min(config$model_week_range):max(config$model_week_range))
+week_dt[, idx_week := .I - 1 ]
+
+location_table[, idx_loc := .I - 1 ]
+
+# Merge on data
+prepped_data <- merge(
+  prepped_data, location_table[, .(location_code, idx_loc)], by='location_code'
+)
+prepped_data <- merge(prepped_data, year_dt, by='year')
+prepped_data <- merge(prepped_data, week_dt, by='week')
+prepped_data <- merge(
+  prepped_data, age_groups[,.(age_group_code, idx_age)], by='age_group_code'
+)
+
+# Set holdout IDs
+prepped_data$idx_holdout <- 1
+
+prepped_data[, intercept := 1 ]
+
+# Subset to only input data for this model
+in_data_final <- prepped_data[(deaths<pop) & (sex==run_sex) & (in_baseline==1), ]
 
 
 data_stack <- list(
-  holdout = XX,
-  y_i = XX,
-  n_i = XX,
-  days_exp_i = XX,
-  X_ij = XX,
-  idx_loc = XX,
-  idx_year = XX,
-  idx_week = XX,
-  idx_age = XX,
-  idx_holdout = XX,
-  loc_adj_mat = XX
+  holdout = holdout,
+  y_i = in_data_final$deaths,
+  n_i = in_data_final$pop,
+  days_exp_i = in_data_final$observed_days,
+  X_ij = as.matrix(in_data_final[, ..use_covs]),
+  idx_loc = in_data_final$idx_loc,
+  idx_year = in_data_final$idx_year,
+  idx_week = in_data_final$idx_week,
+  idx_age = in_data_final$idx_age,
+  idx_holdout = in_data_final$idx_holdout,
+  loc_adj_mat = as(adjmat, 'dgTMatrix')
 )
 
 params_list <- list(
   # Fixed effects
-  beta_covs = rep(0.0, XX),
-  beta_ages = rep(0.0, XX),
+  beta_covs = rep(0.0, length(use_covs)),
+  beta_ages = rep(0.0, nrow(age_groups)),
   # Structured random effect
   Z_stwa = array(
     0.0, 
     dim = c(
       nrow(location_table), # Number of locations
       length(config$model_years), # Number of unique modeled years
-      range(config$model_week_range) + 1, # Number of weeks in each year
+      diff(config$model_week_range) + 1, # Number of weeks in each year
       length(config$age_cutoffs) # Number of age groups
     )
   ),
@@ -99,12 +127,12 @@ if(length(params_list$beta_ages) == 1){
 }
 
 ## Run modeling!
-setup_run_tmb(
+model_fit <- setup_run_tmb(
   tmb_data_stack=data_stack,
   params_list=params_list,
   tmb_random=c('Z_stwa','nugget'),
   tmb_map=tmb_map,
-  DLL=config$paths$tmb_template,
   tmb_outer_maxsteps=1000, tmb_inner_maxsteps=1000, 
   model_name="ITA deaths model", verbose=TRUE
 )
+
