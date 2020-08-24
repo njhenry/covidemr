@@ -137,7 +137,7 @@ Type objective_function<Type>::operator() () {
 
     // Vectors of fixed and structured random effects for all data points
     vector<Type> fes_i(num_obs);
-    vector<TYpe> struct_res_i(num_obs);
+    vector<Type> struct_res_i(num_obs);
 
     // Create a vector to hold individual data estimates
     vector<Type> lambda_i(num_obs);
@@ -157,13 +157,13 @@ Type objective_function<Type>::operator() () {
     }
 
     // N(0, 3) prior for sigmas
-    PARALLEL_REGION jnll -= dnorm(sigma_z, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(sigma_Z, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_nugget, Type(0.0), Type(3.0), true);
 
     // Evaluation of separable space-year-week-age random effect surface
     PARALLEL_REGION jnll += SCALE(SEPARABLE( \
         AR1(rho_age), SEPARABLE(AR1(rho_week), SEPARABLE(AR1(rho_year), GMRF(loc_structure))) \
-      ), sigma_z)(Z_stwa);
+      ), sigma_Z)(Z_stwa);
 
     // Evaluation of nugget
     for(size_t i = 0; i < num_obs; i++){
