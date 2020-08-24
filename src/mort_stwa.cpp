@@ -211,7 +211,7 @@ Type objective_function<Type>::operator() () {
         // Determine center of Poisson distribution for this observation:
         // Lambda = exp(log risk) * exposure * normalizing constant for week size
         //
-        lambda_i[i] = exp(fes_i[i] + struct_res_i[i] + nugget[i]) * n_i[i] * days_exp_i[i] / 7;
+        lambda_i[i] = invlogit_robust(fes_i[i] + struct_res_i[i] + nugget[i]) * n_i[i] * days_exp_i[i] / 7;
         PARALLEL_REGION jnll -= dpois(y_i[i], lambda_i[i], true);
       }
     }    
