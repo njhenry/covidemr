@@ -14,6 +14,9 @@ library(data.table)
 dev_fp <- '/ihme/code/covid-19/user/nathenry/covidemr/'
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
+## DEVELOPMENT: set globals
+## TODO: Convert to command line argument
+prepped_data_version <- '20200823'
 
 ## Create standard location list
 
@@ -49,7 +52,7 @@ prov_table_full <- prov_table_full[order(location_code)]
 
 ## Create output directory and save
 
-out_dir <- file.path(config$paths$prepped_data, config$prepped_data_version)
+out_dir <- file.path(config$paths$prepped_data, prepped_data_version)
 dir.create(out_dir, showWarnings=FALSE)
 
 out_fp <- file.path(out_dir, config$prepped_data_files$location_table)

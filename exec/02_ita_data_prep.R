@@ -17,8 +17,11 @@ dev_fp <- '/ihme/code/covid-19/user/nathenry/covidemr/'
 devtools::load_all(dev_fp)
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
+## TODO: Load using command line argument
+prepped_data_version <- '20200823'
+
 # Load prepared location table
-prepped_data_dir <- file.path(config$paths$prepped_data, config$prepped_data_version)
+prepped_data_dir <- file.path(config$paths$prepped_data, prepped_data_version)
 location_table <- data.table::fread(file.path(
   prepped_data_dir, config$prepped_data_files$location_table
 ))
