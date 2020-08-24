@@ -195,7 +195,7 @@ Type objective_function<Type>::operator() () {
         SCALE(AR1(rho_age_sta), sigma_age_sta),\
         SEPARABLE(\
             SCALE(AR1(rho_year_sta), sigma_year_sta),\
-            GMRF(loc_structure, false)\ # GMRF has already been scaled
+            GMRF(loc_structure, false)\ // Spatial RE has already been scaled
         )\
     )(Z_sta);
 
