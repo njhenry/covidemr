@@ -81,7 +81,6 @@ in_data_final <- prepped_data[(deaths<pop) & (sex==run_sex) & (in_baseline==1), 
 
 
 data_stack <- list(
-  flag = 1,
   holdout = holdout,
   y_i = in_data_final$deaths,
   n_i = in_data_final$pop,
@@ -100,22 +99,31 @@ params_list <- list(
   beta_covs = rep(0.0, length(use_covs)),
   beta_ages = rep(0.0, nrow(age_groups)),
   # Structured random effect
-  Z_stwa = array(
+  Z_sta = array(
     0.0, 
     dim = c(
       nrow(location_table), # Number of locations
       length(config$model_years), # Number of unique modeled years
-      diff(config$model_week_range) + 1, # Number of weeks in each year
       length(config$age_cutoffs) # Number of age groups
     )
   ),
+  Z_twa = array(
+    0.0,
+    dim =c(
+      length(config$model_years), # Number of unique modeled years
+      diff(config$model_week_range) + 1, # Number of weeks in each year
+      length(config$age_cutoffs) # Number of age groups
+    )
+  )
   # Unstructured random effect
   nugget = rep(0.0, length(data_stack$n_i)),
   # Rho parameters
-  rho_loc_trans = 1, rho_year_trans = 1, rho_week_trans = 1, rho_age_trans = 1,
+  rho_loc_trans_sta = 3.0, rho_year_trans_sta = 3.0, rho_age_trans_sta = 3.0,
+  rho_year_trans_twa = 3.0, rho_week_trans_twa = 3.0, rho_age_trans_twa = 3.0,
   # Variance parameters
-  log_sigma_loc = 0, log_sigma_year = 0, log_sigma_week = 0, log_sigma_age = 0,
-  log_sigma_nugget = 0 
+  log_sigma_loc_sta = -2, log_sigma_year_sta = -2, log_sigma_age_sta = -2,
+  log_sigma_year_twa = -2, log_sigma_week_twa = -2, log_sigma_age_twa = -2,
+  log_sigma_nugget = -2
 )
 
 
@@ -132,9 +140,9 @@ if(length(params_list$beta_ages) == 1){
 model_fit <- setup_run_tmb(
   tmb_data_stack=data_stack,
   params_list=params_list,
-  tmb_random=c('Z_stwa','nugget'),
+  tmb_random=c('Z_sta','Z_twa','nugget'),
   tmb_map=tmb_map,
-  normalize = TRUE, run_symbolic_analysis = TRUE,
+  normalize = FALSE, run_symbolic_analysis = TRUE,
   tmb_outer_maxsteps=1000, tmb_inner_maxsteps=1000, 
   model_name="ITA deaths model", verbose=TRUE
 )
