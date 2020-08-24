@@ -116,10 +116,6 @@ Type objective_function<Type>::operator() () {
     // Basic indices
     int num_obs = y_i.size();
     int num_covs = beta_covs.size();
-    int num_locs = Z_stwa.dim(0);
-    int num_years = Z_stwa.dim(1);
-    int num_weeks = Z_stwa.dim(2);
-    int num_age_bins = beta_ages.size();
 
     // Transform some of our parameters
     // - Convert rho from (-Inf, Inf) to (-1, 1)
@@ -152,13 +148,13 @@ Type objective_function<Type>::operator() () {
   // JNLL CONTRIBUTION FROM PRIORS -------------------------------------------->
 
     // N(0, 3) prior for fixed effects
-    for(size_t j = 0; j < num_covs; j++){
+    for(int j = 0; j < num_covs; j++){
       PARALLEL_REGION jnll -= dnorm(beta_covs(j), Type(0.0), Type(3.0), true);
     }
 
     // N(0, 3) prior for sigmas
-    PARALLEL_REGION jnll -= dnorm(sigma_Z, Type(0.0), Type(3.0), true);
-    PARALLEL_REGION jnll -= dnorm(sigma_nugget, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(log_sigma_Z, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(log_sigma_nugget, Type(0.0), Type(3.0), true);
 
     // Evaluation of separable space-year-week-age random effect surface
     PARALLEL_REGION jnll += SCALE(SEPARABLE( \
@@ -166,7 +162,7 @@ Type objective_function<Type>::operator() () {
       ), sigma_Z)(Z_stwa);
 
     // Evaluation of nugget
-    for(size_t i = 0; i < num_obs; i++){
+    for(int i = 0; i < num_obs; i++){
       PARALLEL_REGION jnll -= dnorm(nugget[i], Type(0.0), sigma_nugget, true);
     }
 
@@ -176,7 +172,7 @@ Type objective_function<Type>::operator() () {
     // Determine fixed effect component for all observations
     fes_i = X_ij * beta_covs.matrix();
 
-    for(size_t i=0; i < y_i.size(); i++){
+    for(int i=0; i < num_obs; i++){
       if(idx_holdout[i] != holdout){
         // Determine structured random effect component for this observation
         struct_res_i[i] = Z_stwa[idx_loc[i], idx_year[i], idx_week[i], idx_age[i]];
