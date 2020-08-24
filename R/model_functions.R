@@ -62,7 +62,7 @@ setup_run_tmb <- function(
   if(normalize) tmb_data_stack$flag <- 1
   # Make Autodiff function
   vbmsg("Constructing ADFunction...")
-  TMB::config(tape.parallel=0, DLL=DLL)
+  # TMB::config(tape.parallel=0, DLL=DLL)
   tictoc::tic("  Making Model ADFun")
   obj <- TMB::MakeADFun(
     data=tmb_data_stack,
