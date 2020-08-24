@@ -12,7 +12,6 @@
 #'   optimized in the inner optimizer
 #' @param tmb_map Named list containing parameters that will be treated in a
 #'   particular way by the optimizer
-#' @param DLL Full filepath to the TMB C++ file to use for optimization
 #' @param tmb_outer_maxsteps Max number of steps taken by the outer optimizer
 #' @param tmb_inner_maxsteps Max number of steps taken by the inner optimizer
 #'   in a single outer optimizer step
@@ -32,6 +31,7 @@
 #' @return list of two objects: obj (ADFunction object), and opt (optimized
 #'   nlminb object)
 #'
+#' @useDynLib covidemr
 #' @import TMB glue tictoc
 #' @export
 setup_run_tmb <- function(
@@ -62,14 +62,13 @@ setup_run_tmb <- function(
   if(normalize) tmb_data_stack$flag <- 1
   # Make Autodiff function
   vbmsg("Constructing ADFunction...")
-  # TMB::config(tape.parallel=0, DLL=DLL)
   tictoc::tic("  Making Model ADFun")
   obj <- TMB::MakeADFun(
     data=tmb_data_stack,
     parameters=params_list,
     random=tmb_random,
     map=tmb_map,
-    DLL=DLL,
+    DLL='covidemr',
     silent=TRUE
   )
   obj$env$tracemgc <- as.integer(verbose)
