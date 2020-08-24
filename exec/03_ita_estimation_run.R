@@ -132,6 +132,7 @@ model_fit <- setup_run_tmb(
   params_list=params_list,
   tmb_random=c('Z_stwa','nugget'),
   tmb_map=tmb_map,
+  normalize = TRUE, run_symbolic_analysis = TRUE,
   tmb_outer_maxsteps=1000, tmb_inner_maxsteps=1000, 
   model_name="ITA deaths model", verbose=TRUE
 )
