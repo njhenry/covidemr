@@ -15,6 +15,7 @@ prepped_data_files:
   population: 'prepped_pop.csv'
   deaths: 'prepped_deaths.csv'
   full_data: 'prepped_data_full.csv'
+  template: 'model_template.csv'
   shapefile_sf: 'analysis_shp_sf.RDS'
   shapefile_sp: 'analysis_shp_sp.RDS'
   adjacency_matrix: 'adjmat.RDS'
