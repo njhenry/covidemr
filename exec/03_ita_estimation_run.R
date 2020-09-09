@@ -19,6 +19,7 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 ## TODO: Convert to command line
 run_sex <- 'male'
 prepped_data_version <- '20200823'
+model_run_version <- '20200823'
 holdout <- 0
 use_covs <- c('intercept','tfr','unemp','socserv')
 
@@ -99,31 +100,23 @@ params_list <- list(
   beta_covs = rep(0.0, length(use_covs)),
   beta_ages = rep(0.0, nrow(age_groups)),
   # Structured random effect
-  Z_sta = array(
+  Z_stwa = array(
     0.0, 
     dim = c(
       nrow(location_table), # Number of locations
       length(config$model_years), # Number of unique modeled years
-      length(config$age_cutoffs) # Number of age groups
-    )
-  ),
-  Z_twa = array(
-    0.0,
-    dim =c(
-      length(config$model_years), # Number of unique modeled years
       diff(config$model_week_range) + 1, # Number of weeks in each year
       length(config$age_cutoffs) # Number of age groups
     )
-  )
+  ),
   # Unstructured random effect
   nugget = rep(0.0, length(data_stack$n_i)),
   # Rho parameters
-  rho_loc_trans_sta = 3.0, rho_year_trans_sta = 3.0, rho_age_trans_sta = 3.0,
-  rho_year_trans_twa = 3.0, rho_week_trans_twa = 3.0, rho_age_trans_twa = 3.0,
+  rho_loc_trans = 0.0, rho_year_trans = 0.0, rho_week_trans = 0.0,
+  rho_age_trans = 0.0,
   # Variance parameters
-  log_sigma_loc_sta = -2, log_sigma_year_sta = -2, log_sigma_age_sta = -2,
-  log_sigma_year_twa = -2, log_sigma_week_twa = -2, log_sigma_age_twa = -2,
-  log_sigma_nugget = -2
+  log_sigma_loc = 0, log_sigma_year = 0, log_sigma_week = 0,
+  log_sigma_age = 0, log_sigma_nugget = 0
 )
 
 
@@ -140,10 +133,41 @@ if(length(params_list$beta_ages) == 1){
 model_fit <- setup_run_tmb(
   tmb_data_stack=data_stack,
   params_list=params_list,
-  tmb_random=c('Z_sta','Z_twa','nugget'),
+  tmb_random=c('Z_stwa','nugget'),
   tmb_map=tmb_map,
-  normalize = FALSE, run_symbolic_analysis = TRUE,
+  normalize = TRUE, run_symbolic_analysis = TRUE,
   tmb_outer_maxsteps=1000, tmb_inner_maxsteps=1000, 
   model_name="ITA deaths model", verbose=TRUE
 )
 
+sdrep <- sdreport(model_fit$obj, bias.correct = TRUE, getJointPrecision = TRUE)
+
+
+## Save outputs ----------------------------------------------------------------
+
+out_file_stub <- sprintf("%s_holdout%i", run_sex, holdout)
+out_dir <- file.path(config$paths$model_results, model_run_version)
+dir.create(out_dir, showWarnings = FALSE)
+
+saveRDS(data_stack, file=sprintf('%s/%s_data_stack.RDS', out_dir, out_file_stub))
+saveRDS(params_list, file=sprintf('%s/%s_params_list.RDS', out_dir, out_file_stub))
+saveRDS(model_fit, file=sprintf('%s/%s_model_fit.RDS', out_dir, out_file_stub))
+saveRDS(sdrep, file=sprintf('%s/%s_sdrep.RDS',out_dir, out_file_stub))
+
+# data_stack <- readRDS(sprintf('%s/%s_data_stack.RDS', out_dir, out_file_stub))
+# params_list <- readRDS(sprintf('%s/%s_params_list.RDS', out_dir, out_file_stub))
+# model_fit <- readRDS(sprintf('%s/%s_model_fit.RDS', out_dir, out_file_stub))
+# sdrep <- readRDS(sprintf('%s/%s_sdrep.RDS',out_dir, out_file_stub))
+
+
+## Create post-estimation predictive objects -----------------------------------
+
+mu <- c(sdrep$par.fixed, sdrep$par.random)
+parnames <- names(mu)
+keep_fields <- which(parnames %in% c('beta_covs', 'beta_ages', 'Z_stwa'))
+
+draws <- rmvnorm_prec(
+  mu = mu[keep_fields],
+  prec = sdrep$jointPrecision[keep_fields, keep_fields],
+  n.sims = 100
+)
