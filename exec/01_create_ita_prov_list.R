@@ -16,7 +16,7 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## DEVELOPMENT: set globals
 ## TODO: Convert to command line argument
-prepped_data_version <- '20200823'
+prepped_data_version <- '20200909'
 
 ## Create standard location list
 
