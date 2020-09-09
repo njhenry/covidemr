@@ -157,6 +157,7 @@ Type objective_function<Type>::operator() () {
     }
 
     // N(0, 3) prior for sigmas
+    // TODO: Try messing with variance
     PARALLEL_REGION jnll -= dnorm(sigma_loc, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_year, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_week, Type(0.0), Type(3.0), true);
@@ -175,6 +176,10 @@ Type objective_function<Type>::operator() () {
             )\
         )\
     )(Z_stwa);
+
+    // AR1 -> y_n+1 = (rho) * y_n + eps, eps ~ N(0, sigma_week^2)
+
+    // 
 
     // Evaluation of nugget
     for(int i = 0; i < num_obs; i++){
