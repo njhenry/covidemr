@@ -135,19 +135,10 @@ setup_run_tmb <- function(
 #' @return length(mu) by n.sims matrix of parameter draws
 #'
 #' @import matrixcalc
+#' @import Matrix
 #' @export
-rmvnorm_prec <- function(mu, prec, n.sims, find_near_pd=FALSE) {
-  if(find_near_pd){
-    if( !matrixcalc::is.positive.definite(as.matrix(prec))){
-      message("WARNING: Joint Precision matrix is not positive definite.")
-      message("Finding closest positive definite matrix...\n")
-      prec <- Matrix(
-        Matrix::nearPD(prec)$mat,
-        sparse=TRUE
-      )
-    }
-  }
+rmvnorm_prec <- function(mu, prec, n.sims) {
   z = matrix(rnorm(length(mu) * n.sims), ncol=n.sims)
-  L_inv = Cholesky(prec, super=TRUE)
-  return(mu + solve(as(L_inv, 'pMatrix'), solve(t(as(L_inv, "Matrix")), z)))
+  L_inv = Matrix::Cholesky(prec, super=TRUE)
+  return(mu + solve(as(L_inv, 'pMatrix'), solve(t(as.matrix(as(L_inv, 'Matrix'))), z)))
 }
