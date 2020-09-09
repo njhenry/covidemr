@@ -18,13 +18,16 @@ devtools::load_all(dev_fp)
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## TODO: Load using command line argument
-prepped_data_version <- '20200823'
+prepped_data_version <- '20200909'
 
 # Load prepared location table
 prepped_data_dir <- file.path(config$paths$prepped_data, prepped_data_version)
 location_table <- data.table::fread(file.path(
   prepped_data_dir, config$prepped_data_files$location_table
 ))
+
+# Get age groups
+age_groups <- create_age_groups(config$age_cutoffs)
 
 # Define a convenience function for loading CSVs
 ita_fread <- function(fp){
@@ -81,6 +84,7 @@ covars_prepped <- lapply(covar_names, function(covar_name){
 names(covars_prepped) <- covar_names
 
 
+
 ## Merge deaths, population, and covariates to get prepped input dataset -------
 
 in_data <- merge(
@@ -111,6 +115,49 @@ for(covar_name in covar_names){
 write.csv(
   in_data,
   file = file.path(prepped_data_dir, config$prepped_data_files$full_data),
+  row.names = FALSE
+)
+
+
+## Create template dataset containing IDs for all categories to be modeled -----
+
+sex_index <- data.table(sex = c('male','female'), c_j = 1)[, idx_sex := .I - 1 ]
+
+years_index <- data.table(
+  year = sort(config$model_years),
+  c_j = 1
+)[, idx_year := .I - 1]
+
+week_dt <- data.table(
+  week = min(config$model_week_range):max(config$model_week_range),
+  c_j = 1
+)[, idx_week := .I - 1]
+
+# Full template dataset contains sex, location, year, week, age
+# idx_<index> is a zero-indexed code for each ID column
+template_dt <- location_table[order(location_code)
+  ][, `:=` (c_j = 1, idx_loc = .I - 1)
+  ][ sex_index, on='c_j', allow.cartesian=TRUE
+  ][ age_groups[, `:=` (c_j=1, idx_age=.I-1)], on='c_j', allow.cartesian=TRUE
+  ][ years_index, on='c_j', allow.cartesian=TRUE
+  ][ week_dt, on='c_j', allow.cartesian=TRUE
+  ][, c_j := NULL ]
+
+# Merge on covariates
+template_dt[, intercept := 1 ]
+for(covar_name in covar_names){
+  template_dt <- merge(
+    x = template_dt,
+    y = covars_prepped[[covar_name]]$prepped_covar,
+    by = covars_prepped[[covar_name]]$covar_indices,
+    all.x = TRUE
+  )
+}
+
+# Save out
+write.csv(
+  template_dt,
+  file = file.path(prepped_data_dir, config$prepped_data_files$template),
   row.names = FALSE
 )
 
