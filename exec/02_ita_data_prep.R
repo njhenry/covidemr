@@ -84,41 +84,6 @@ covars_prepped <- lapply(covar_names, function(covar_name){
 names(covars_prepped) <- covar_names
 
 
-
-## Merge deaths, population, and covariates to get prepped input dataset -------
-
-in_data <- merge(
-  x = deaths_prepped,
-  y = pop_prepped, 
-  by = c('location_code', 'year', 'sex', 'age_group_code'),
-  all = TRUE
-)
-for(covar_name in covar_names){
-  in_data <- merge(
-    x = in_data,
-    y = covars_prepped[[covar_name]]$prepped_covar,
-    by = covars_prepped[[covar_name]]$covar_indices,
-    all = TRUE
-  )
-}
-
-# Quick validation
-if(any(is.na(in_data$deaths))) stop("Missing deaths in final dataset")
-if(any(is.na(in_data$pop))) stop("Missing population in final dataset")
-for(covar_name in covar_names){
-  if(any(is.na(in_data[[covar_name]]))) stop(sprintf(
-    "Missing values for covar %s in final dataset", covar_name
-  ))
-}
-
-# Save to file
-write.csv(
-  in_data,
-  file = file.path(prepped_data_dir, config$prepped_data_files$full_data),
-  row.names = FALSE
-)
-
-
 ## Create template dataset containing IDs for all categories to be modeled -----
 
 sex_index <- data.table(sex = c('male','female'), c_j = 1)[, idx_sex := .I - 1 ]
@@ -154,10 +119,44 @@ for(covar_name in covar_names){
   )
 }
 
+# Quick validation
+for(covar_name in covar_names){
+  if(any(is.na(template_dt[[covar_name]]))) stop(sprintf(
+    "Missing values for covar %s in template dataset", covar_name
+  ))
+}
+
 # Save out
 write.csv(
   template_dt,
   file = file.path(prepped_data_dir, config$prepped_data_files$template),
+  row.names = FALSE
+)
+
+
+## Merge deaths and population onto the template to get full input dataset -----
+
+in_data <- merge(
+  x = template_dt, y = pop_prepped,
+  by = c('location_code', 'year', 'sex', 'age_group_code'),
+  all.x = TRUE
+)
+if(any(is.na(in_data$pop))) stop("Some populations missing from input data")
+
+in_data <- merge(
+  x = in_data, y = deaths_prepped,
+  by = c('location_code', 'year', 'sex', 'week', 'age_group_code'),
+  all.x = TRUE
+)
+if(nrow(in_data[is.na(deaths)])/nrow(in_data) > .2){
+  stop("Deaths missing from more than 20% of observations - check data!")
+}
+in_data[is.na(deaths), `:=` (deaths=0, observed_days=7)]
+
+# Save to file
+write.csv(
+  in_data,
+  file = file.path(prepped_data_dir, config$prepped_data_files$full_data),
   row.names = FALSE
 )
 
