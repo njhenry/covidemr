@@ -19,9 +19,17 @@ prepped_data_files:
   shapefile_sf: 'analysis_shp_sf.RDS'
   shapefile_sp: 'analysis_shp_sp.RDS'
   adjacency_matrix: 'adjmat.RDS'
+results_files:
+  data_stack: '%s_data_stack.RDS'
+  params_list: '%s_params_list.RDS'
+  model_fit: '%s_model_fit.RDS'
+  sdrep: '%s_sdrep.RDS'
+  preds: '%s_preds.csv'
+  summs: '%s_summaries.csv'
 model_years: [2015, 2016, 2017, 2018, 2019, 2020]
 age_cutoffs: [0, 45, 65]
 model_week_range: [1, 18]
+num_draws: 1000
 first_death_date: '2020-03-01' # In YYYY-MM-DD format
 pop_identifiers: ['age_group_code','sex','year','location_code']
 death_identifiers: ['age_group_code','sex','year','week','location_code']
