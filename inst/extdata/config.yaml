@@ -20,12 +20,12 @@ prepped_data_files:
   shapefile_sp: 'analysis_shp_sp.RDS'
   adjacency_matrix: 'adjmat.RDS'
 results_files:
-  data_stack: '{model_results_dir}/{model_run_version}/{run_sex}_data_stack.RDS'
-  params_list: '{model_results_dir}/{model_run_version}/{run_sex}_params_list.RDS'
-  model_fit: '{model_results_dir}/{model_run_version}/{run_sex}_model_fit.RDS'
-  sdrep: '{model_results_dir}/{model_run_version}/{run_sex}_sdrep.RDS'
-  preds: '{model_results_dir}/{model_run_version}/{run_sex}_preds.csv'
-  summs: '{model_results_dir}/{model_run_version}/{run_sex}_summaries.csv'
+  data_stack: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_data_stack.RDS'
+  params_list: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_params_list.RDS'
+  model_fit: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_model_fit.RDS'
+  sdrep: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_sdrep.RDS'
+  preds: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_preds.csv'
+  summs: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_summaries.csv'
 model_years: [2015, 2016, 2017, 2018, 2019, 2020]
 age_cutoffs: [0, 45, 65]
 model_week_range: [1, 18]
