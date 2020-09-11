@@ -88,6 +88,7 @@ Type objective_function<Type>::operator() () {
     DATA_INTEGER(use_Z_stwa);
     DATA_INTEGER(use_Z_sta);
     DATA_INTEGER(use_Z_fourier);
+    DATA_INTEGER(harmonics_level);
 
 
   // INPUT PARAMETERS --------------------------------------------------------->
@@ -130,7 +131,7 @@ Type objective_function<Type>::operator() () {
     if(use_Z_sta == 1 && use_Z_stwa == 1){
       printf("Warning: both STA and STWA random effects are in use.");
     }
-    if(use_Z_fourier == 1 && Z_fourier.cols() % 2 != 0){
+    if(use_Z_fourier == 1 && Z_fourier.cols() / harmonics_level != 2){
       printf("Warning: incorrect number of columns for Z harmonics.");
     }
 
@@ -139,7 +140,6 @@ Type objective_function<Type>::operator() () {
     // Basic indices
     int num_obs = y_i.size();
     int num_covs = beta_covs.size();
-    int harmonics_level = Z_fourier.cols() / 2;
 
     // Transform some of our parameters
     // - Convert rho from (-Inf, Inf) to (-1, 1)
@@ -168,7 +168,7 @@ Type objective_function<Type>::operator() () {
     vector<Type> log_prob_i(num_obs);
 
     // Harmonic frequency of 1 year (52 weeks)
-    Type year_freq = 2.0 * M_PI / 52.0;
+    Type year_freq = 2.0 * 3.1415926535 / 52.0;
 
 
   // Instantiate joint negative log-likelihood -------------------------------->

@@ -84,7 +84,8 @@ data_stack <- list(
   loc_adj_mat = as(adjmat, 'dgTMatrix'),
   use_Z_stwa = as.integer(use_Z_stwa),
   use_Z_sta = as.integer(use_Z_sta),
-  use_Z_fourier = as.integer(use_Z_fourier)
+  use_Z_fourier = as.integer(use_Z_fourier),
+  harmomics_level = fourier_levels
 )
 
 params_list <- list(
@@ -115,7 +116,7 @@ params_list <- list(
       max(in_data_final$idx_fourier) + 1,
       2 * fourier_levels
     )
-  )
+  ),
   # Unstructured random effect
   nugget = rep(0.0, length(data_stack$n_i)),
   # Rho parameters
@@ -142,13 +143,16 @@ if( !use_Z_fourier ){
   tmb_map$Z_fourier <- rep(as.factor(NA), prod(dim(params_list$Z_fourier)))
 }
 
-
+tmb_random <- c('nugget')
+if(use_Z_stwa) tmb_random <- c(tmb_random, 'Z_stwa')
+if(use_Z_sta) tmb_random <- c(tmb_random, 'Z_sta')
+if(use_Z_fourier) tmb_random <- c(tmb_random, "Z_fourier")
 
 ## Run modeling!
 model_fit <- setup_run_tmb(
   tmb_data_stack=data_stack,
   params_list=params_list,
-  tmb_random=c('Z_stwa','nugget'),
+  tmb_random=tmb_random,
   tmb_map=tmb_map,
   normalize = TRUE, run_symbolic_analysis = TRUE,
   tmb_outer_maxsteps=1000, tmb_inner_maxsteps=1000, 
