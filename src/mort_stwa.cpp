@@ -189,7 +189,7 @@ Type objective_function<Type>::operator() () {
     PARALLEL_REGION jnll -= dnorm(sigma_year, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_week, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_age, Type(0.0), Type(3.0), true);
-    PARALLEL_REGION jnll -= dnorm(sigma_nugget, Type(0.0), Type(3.0), true);
+    PARALLEL_REGION jnll -= dnorm(sigma_nugget, Type(0.0), Type(0.1), true);
 
     if(use_Z_fourier){
       // N(0, 3) prior for harmonics
