@@ -195,7 +195,7 @@ Type objective_function<Type>::operator() () {
       // N(0, 3) prior for harmonics
       for(int i = 0; i < Z_fourier.rows(); i++){
         for(int j = 0; j < Z_fourier.cols(); j++){
-          PARALLEL_REGION jnll -= dnorm(Z_fourier[i, j], Type(0.0), Type(3.0), true);
+          PARALLEL_REGION jnll -= dnorm(Z_fourier(i, j), Type(0.0), Type(3.0), true);
         }
       }
     }
@@ -229,7 +229,7 @@ Type objective_function<Type>::operator() () {
 
     // Evaluation of nugget
     for(int i = 0; i < num_obs; i++){
-      PARALLEL_REGION jnll -= dnorm(nugget[i], Type(0.0), sigma_nugget, true);
+      PARALLEL_REGION jnll -= dnorm(nugget(i), Type(0.0), sigma_nugget, true);
     }
 
     if(flag == 0) return jnll;
@@ -241,28 +241,28 @@ Type objective_function<Type>::operator() () {
     fes_i = X_ij * beta_covs.matrix();
 
     for(int i=0; i < num_obs; i++){
-      if(idx_holdout[i] != holdout){
+      if(idx_holdout(i) != holdout){
         // Determine structured random effect component for this observation
-        struct_res_i[i] = 0;
+        struct_res_i(i) = 0;
         if(use_Z_stwa == 1){
-          struct_res_i[i] += Z_stwa[idx_loc[i], idx_year[i], idx_week[i], idx_age[i]];
+          struct_res_i(i) += Z_stwa(idx_loc(i), idx_year(i), idx_week(i), idx_age(i));
         }
         if(use_Z_sta == 1){
-          struct_res_i[i] += Z_sta[idx_loc[i], idx_year[i], idx_age[i]];          
+          struct_res_i(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));          
         }
         if(use_Z_fourier == 1){
           for(int lev=1; lev <= harmonics_level; lev++){
-            struct_res_i[i] += Z_fourier[idx_fourier[i], 2*(lev)-2] * sin(lev * (idx_week[i] + 1.0) * year_freq ) + \
-              Z_fourier[idx_fourier[i], 2*(lev)-1] * cos(lev * (idx_week[i] + 1.0) * year_freq);
+            struct_res_i(i) += Z_fourier(idx_fourier(i), 2*lev-2) * sin(lev * (idx_week(i) + 1.0) * year_freq ) + \
+              Z_fourier(idx_fourier(i), 2*lev-1) * cos(lev * (idx_week(i) + 1.0) * year_freq);
           }
         }
         
         // Determine logit probability for this observation
-        log_prob_i[i] = fes_i[i] + beta_ages[idx_age[i]] + struct_res_i[i] + nugget[i];
+        log_prob_i(i) = fes_i(i) + beta_ages(idx_age(i)) + struct_res_i(i) + nugget(i);
 
         PARALLEL_REGION jnll -= dpois(\
-            y_i[i],\
-            exp(log_prob_i[i]) * n_i[i] * days_exp_i[i] / 7.0,\
+            y_i(i),\
+            exp(log_prob_i(i)) * n_i(i) * days_exp_i(i) / 7.0,\
             true\
         );
       }
