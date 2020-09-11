@@ -131,7 +131,7 @@ Type objective_function<Type>::operator() () {
       printf("Warning: both STA and STWA random effects are in use.");
     }
     if(use_Z_fourier == 1 && Z_fourier.cols() % 2 != 0){
-      printf("Warning: incorrect number of columns for Z harmonics.")
+      printf("Warning: incorrect number of columns for Z harmonics.");
     }
 
   // TRANSFORM DATA AND PARAMETER OBJECTS ------------------------------------->
@@ -234,7 +234,7 @@ Type objective_function<Type>::operator() () {
     for(int i=0; i < num_obs; i++){
       if(idx_holdout[i] != holdout){
         // Determine structured random effect component for this observation
-        struct_res_i[i] = 0
+        struct_res_i[i] = 0;
         if(use_Z_stwa == 1){
           struct_res_i[i] += Z_stwa[idx_loc[i], idx_year[i], idx_week[i], idx_age[i]];
         }
