@@ -191,6 +191,15 @@ Type objective_function<Type>::operator() () {
     PARALLEL_REGION jnll -= dnorm(sigma_age, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_nugget, Type(0.0), Type(3.0), true);
 
+    if(use_Z_fourier){
+      // N(0, 3) prior for harmonics
+      for(int i = 0; i < Z_fourier.rows(); i++){
+        for(int j = 0; j < Z_fourier.cols(); j++){
+          PARALLEL_REGION jnll -= dnorm(Z_fourier[i, j], Type(0.0), Type(3.0), true);
+        }
+      }
+    }
+
     if(use_Z_stwa == 1){
       // Evaluation of separable space-year-week-age random effect surface
       // Rescale AR1 in age and time; spatial RE has already been scaled

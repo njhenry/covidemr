@@ -18,7 +18,7 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## Settings 
 ## TODO: Convert to command line
-run_sex <- 'male'
+run_sex <- 'female'
 prepped_data_version <- '20200909'
 model_run_version <- '20200910'
 holdout <- 0
@@ -85,7 +85,7 @@ data_stack <- list(
   use_Z_stwa = as.integer(use_Z_stwa),
   use_Z_sta = as.integer(use_Z_sta),
   use_Z_fourier = as.integer(use_Z_fourier),
-  harmomics_level = fourier_levels
+  harmonics_level = as.integer(fourier_levels)
 )
 
 params_list <- list(
@@ -155,7 +155,7 @@ model_fit <- setup_run_tmb(
   tmb_random=tmb_random,
   tmb_map=tmb_map,
   normalize = TRUE, run_symbolic_analysis = TRUE,
-  tmb_outer_maxsteps=1000, tmb_inner_maxsteps=1000, 
+  tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000, 
   model_name="ITA deaths model", verbose=TRUE
 )
 
