@@ -18,11 +18,16 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## Settings 
 ## TODO: Convert to command line
-run_sex <- 'female'
+run_sex <- 'male'
 prepped_data_version <- '20200909'
-model_run_version <- '20200909'
+model_run_version <- '20200910'
 holdout <- 0
 use_covs <- c('intercept','tfr','unemp','socserv')
+use_Z_stwa <- FALSE
+use_Z_sta <- !use_Z_stwa
+use_Z_fourier <- !use_Z_stwa
+fourier_levels <- 2
+
 
 ## Load and prepare data -------------------------------------------------------
 
@@ -57,6 +62,7 @@ template_dt <- template_dt[sex==run_sex, ]
 
 prepped_data <- prepped_data[sex==run_sex, ]
 # Set holdout IDs
+prepped_data[, idx_fourier := idx_age ]
 prepped_data$idx_holdout <- 1
 
 # Subset to only input data for this model
@@ -73,8 +79,12 @@ data_stack <- list(
   idx_year = in_data_final$idx_year,
   idx_week = in_data_final$idx_week,
   idx_age = in_data_final$idx_age,
+  idx_fourier = in_data_final$idx_fourier,
   idx_holdout = in_data_final$idx_holdout,
-  loc_adj_mat = as(adjmat, 'dgTMatrix')
+  loc_adj_mat = as(adjmat, 'dgTMatrix'),
+  use_Z_stwa = as.integer(use_Z_stwa),
+  use_Z_sta = as.integer(use_Z_sta),
+  use_Z_fourier = as.integer(use_Z_fourier)
 )
 
 params_list <- list(
@@ -91,6 +101,21 @@ params_list <- list(
       length(config$age_cutoffs) # Number of age groups
     )
   ),
+  Z_sta = array(
+    0.0,
+    dim = c(
+      nrow(location_table), # Number of locations
+      length(config$model_years), # Number of unique modeled years
+      length(config$age_cutoffs) # Number of age groups
+    )
+  ),
+  Z_fourier = array(
+    0.0,
+    dim = c(
+      max(in_data_final$idx_fourier) + 1,
+      2 * fourier_levels
+    )
+  )
   # Unstructured random effect
   nugget = rep(0.0, length(data_stack$n_i)),
   # Rho parameters
@@ -103,13 +128,21 @@ params_list <- list(
 
 
 ## Hold first age fixed effect constant
-if(length(params_list$beta_ages) == 1){
-  tmb_map <- list()
-} else {
-  tmb_map = list(
-    beta_ages = as.factor(c(NA, 2:length(params_list$beta_ages)))
-  )
+tmb_map <- list()
+if(length(params_list$beta_ages) > 1){
+  tmb_map$beta_ages <- as.factor(c(NA, 2:length(params_list$beta_ages)))
 }
+if( !use_Z_stwa ){
+  tmb_map$Z_stwa <- rep(as.factor(NA), prod(dim(params_list$Z_stwa)))
+}
+if( !use_Z_sta ){
+  tmb_map$Z_sta <- rep(as.factor(NA), prod(dim(params_list$Z_sta)))
+}
+if( !use_Z_fourier ){
+  tmb_map$Z_fourier <- rep(as.factor(NA), prod(dim(params_list$Z_fourier)))
+}
+
+
 
 ## Run modeling!
 model_fit <- setup_run_tmb(

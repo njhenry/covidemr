@@ -14,6 +14,7 @@
 #include <math.h>
 #include <Eigen/Sparse>
 #include <vector>
+#include <stdio.h>
 using namespace density;
 using Eigen::SparseMatrix; 
 
@@ -77,10 +78,16 @@ Type objective_function<Type>::operator() () {
     DATA_IVECTOR(idx_year);    // Index for the time period (year)
     DATA_IVECTOR(idx_week);    // Index for the time period (week) 
     DATA_IVECTOR(idx_age);     // Index for the age group
+    DATA_IVECTOR(idx_fourier); // Index for the Fourier transform group
     DATA_IVECTOR(idx_holdout); // Holdout index for each BH observation
 
     // Adjacency matrix for locations
     DATA_SPARSE_MATRIX(loc_adj_mat);
+
+    // Which of the correlated random effects structures should be used?
+    DATA_INTEGER(use_Z_stwa);
+    DATA_INTEGER(use_Z_sta);
+    DATA_INTEGER(use_Z_fourier);
 
 
   // INPUT PARAMETERS --------------------------------------------------------->
@@ -89,9 +96,16 @@ Type objective_function<Type>::operator() () {
     PARAMETER_VECTOR(beta_covs); // Vector of fixed effects on covariates
     PARAMETER_VECTOR(beta_ages); // Vector of fixed effects on age group
 
-    // Correlated random effect surface
-    // 4-dimensional array of size: (# locations) x (# years) x (# weeks) x (# ages)
+    // Correlated random effect surfaces
+    // Multiple possible surfaces can be added together
+    // -> 4-dimensional array of size: (# locations) by (# years) by (# weeks) by (# ages)
     PARAMETER_ARRAY(Z_stwa);
+    // -> 3-dimensional array of size: (# locations) by (# years) by (# ages)
+    PARAMETER_ARRAY(Z_sta);
+
+    // Harmonics matrix
+    // Dimensions: (# separately-fit harmonics) by (2 x harmonics series level)
+    PARAMETER_ARRAY(Z_fourier);
 
     // Nugget
     // Vector of random effects, same length as number of observations
@@ -110,12 +124,22 @@ Type objective_function<Type>::operator() () {
     PARAMETER(log_sigma_age);
     PARAMETER(log_sigma_nugget);
 
+  // DATA CHECKS -------------------------------------------------------------->
+
+    // Warn if both Z_stwa and Z_sta are being used
+    if(use_Z_sta == 1 && use_Z_stwa == 1){
+      printf("Warning: both STA and STWA random effects are in use.");
+    }
+    if(use_Z_fourier == 1 && Z_fourier.cols() % 2 != 0){
+      printf("Warning: incorrect number of columns for Z harmonics.")
+    }
 
   // TRANSFORM DATA AND PARAMETER OBJECTS ------------------------------------->
 
     // Basic indices
     int num_obs = y_i.size();
     int num_covs = beta_covs.size();
+    int harmonics_level = Z_fourier.cols() / 2;
 
     // Transform some of our parameters
     // - Convert rho from (-Inf, Inf) to (-1, 1)
@@ -143,6 +167,9 @@ Type objective_function<Type>::operator() () {
     // Create a vector to hold individual data estimates
     vector<Type> log_prob_i(num_obs);
 
+    // Harmonic frequency of 1 year (52 weeks)
+    Type year_freq = 2.0 * M_PI / 52.0;
+
 
   // Instantiate joint negative log-likelihood -------------------------------->
 
@@ -164,22 +191,32 @@ Type objective_function<Type>::operator() () {
     PARALLEL_REGION jnll -= dnorm(sigma_age, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_nugget, Type(0.0), Type(3.0), true);
 
-    // Evaluation of separable space-year-age random effect surface
-    // Rescale AR1 in age and time; spatial RE has already been scaled
-    PARALLEL_REGION jnll += SEPARABLE(\
-        SCALE(AR1(rho_age), sigma_age),\
-        SEPARABLE(\
-            SCALE(AR1(rho_week), sigma_week),\
-            SEPARABLE(\
-                SCALE(AR1(rho_year), sigma_year),\
-                GMRF(loc_Q, false)\
-            )\
-        )\
-    )(Z_stwa);
+    if(use_Z_stwa == 1){
+      // Evaluation of separable space-year-week-age random effect surface
+      // Rescale AR1 in age and time; spatial RE has already been scaled
+      PARALLEL_REGION jnll += SEPARABLE(\
+          SCALE(AR1(rho_age), sigma_age),\
+          SEPARABLE(\
+              SCALE(AR1(rho_week), sigma_week),\
+              SEPARABLE(\
+                  SCALE(AR1(rho_year), sigma_year),\
+                  GMRF(loc_Q, false)\
+              )\
+          )\
+      )(Z_stwa);        
+    }
 
-    // AR1 -> y_n+1 = (rho) * y_n + eps, eps ~ N(0, sigma_week^2)
-
-    // 
+    if(use_Z_sta == 1){
+      // Evaluation of separable space-year-age random effect surface
+      // Rescale AR1 in age and time; spatial RE has already been scaled
+      PARALLEL_REGION jnll += SEPARABLE(\
+          SCALE(AR1(rho_age), sigma_age),\
+          SEPARABLE(\
+              SCALE(AR1(rho_year), sigma_year),\
+              GMRF(loc_Q, false)\
+          )\
+      )(Z_sta);
+    }
 
     // Evaluation of nugget
     for(int i = 0; i < num_obs; i++){
@@ -197,7 +234,20 @@ Type objective_function<Type>::operator() () {
     for(int i=0; i < num_obs; i++){
       if(idx_holdout[i] != holdout){
         // Determine structured random effect component for this observation
-        struct_res_i[i] = Z_stwa[idx_loc[i], idx_year[i], idx_week[i], idx_age[i]];
+        struct_res_i[i] = 0
+        if(use_Z_stwa == 1){
+          struct_res_i[i] += Z_stwa[idx_loc[i], idx_year[i], idx_week[i], idx_age[i]];
+        }
+        if(use_Z_sta == 1){
+          struct_res_i[i] += Z_sta[idx_loc[i], idx_year[i], idx_age[i]];          
+        }
+        if(use_Z_fourier){
+          for(int lev=1; lev <= harmonics_level; lev++){
+            struct_res_i[i] += sin(lev * Z_fourier[idx_fourier[i], lev - 2] * (idx_week[i] + 1.0) * year_freq ) + \
+              cos(lev * Z_fourier[idx_fourier[i], lev - 1] * (idx_week[i] + 1.0) * year_freq);
+
+          }
+        }
         
         // Determine logit probability for this observation
         log_prob_i[i] = fes_i[i] + beta_ages[idx_age[i]] + struct_res_i[i] + nugget[i];
