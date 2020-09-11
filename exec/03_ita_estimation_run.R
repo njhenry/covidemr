@@ -10,6 +10,7 @@
 library(data.table)
 library(sp)
 library(sf)
+library(parallel)
 
 dev_fp <- '/ihme/code/covid-19/user/nathenry/covidemr/'
 devtools::load_all(dev_fp)
@@ -17,9 +18,9 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## Settings 
 ## TODO: Convert to command line
-run_sex <- 'male'
-prepped_data_version <- '20200823'
-model_run_version <- '20200823'
+run_sex <- 'female'
+prepped_data_version <- '20200909'
+model_run_version <- '20200909'
 holdout <- 0
 use_covs <- c('intercept','tfr','unemp','socserv')
 
@@ -31,6 +32,7 @@ prep_file <- function(key){
   return(file.path(prep_dir, config$prepped_data_files[[key]]))
 }
 prepped_data <- fread(prep_file('full_data'))
+template_dt <- fread(prep_file('template'))
 location_table <- fread(prep_file('location_table'))
 adjmat <- readRDS(prep_file('adjacency_matrix'))
 
@@ -50,35 +52,15 @@ adjmat <- readRDS(prep_file('adjacency_matrix'))
 # Additional data:
 #  - Table associating province/age/time values with random effect indices
 
-## Set up random effects indices
-age_groups <- create_age_groups(config$age_cutoffs)
-age_groups[, idx_age := age_group_code - min(age_group_code) ]
+## Subset data to sex being modeled; merge indices on prepared data
+template_dt <- template_dt[sex==run_sex, ]
 
-year_dt <- data.table(year=sort(config$model_years))
-year_dt[, idx_year := .I - 1 ]
-
-week_dt <- data.table(week = min(config$model_week_range):max(config$model_week_range))
-week_dt[, idx_week := .I - 1 ]
-
-location_table[, idx_loc := .I - 1 ]
-
-# Merge on data
-prepped_data <- merge(
-  prepped_data, location_table[, .(location_code, idx_loc)], by='location_code'
-)
-prepped_data <- merge(prepped_data, year_dt, by='year')
-prepped_data <- merge(prepped_data, week_dt, by='week')
-prepped_data <- merge(
-  prepped_data, age_groups[,.(age_group_code, idx_age)], by='age_group_code'
-)
-
+prepped_data <- prepped_data[sex==run_sex, ]
 # Set holdout IDs
 prepped_data$idx_holdout <- 1
 
-prepped_data[, intercept := 1 ]
-
 # Subset to only input data for this model
-in_data_final <- prepped_data[(deaths<pop) & (sex==run_sex) & (in_baseline==1), ]
+in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baseline==1), ]
 
 
 data_stack <- list(
@@ -98,7 +80,7 @@ data_stack <- list(
 params_list <- list(
   # Fixed effects
   beta_covs = rep(0.0, length(use_covs)),
-  beta_ages = rep(0.0, nrow(age_groups)),
+  beta_ages = rep(0.0, length(unique(template_dt$idx_age))),
   # Structured random effect
   Z_stwa = array(
     0.0, 
@@ -149,25 +131,65 @@ out_file_stub <- sprintf("%s_holdout%i", run_sex, holdout)
 out_dir <- file.path(config$paths$model_results, model_run_version)
 dir.create(out_dir, showWarnings = FALSE)
 
-saveRDS(data_stack, file=sprintf('%s/%s_data_stack.RDS', out_dir, out_file_stub))
-saveRDS(params_list, file=sprintf('%s/%s_params_list.RDS', out_dir, out_file_stub))
-saveRDS(model_fit, file=sprintf('%s/%s_model_fit.RDS', out_dir, out_file_stub))
-saveRDS(sdrep, file=sprintf('%s/%s_sdrep.RDS',out_dir, out_file_stub))
-
-# data_stack <- readRDS(sprintf('%s/%s_data_stack.RDS', out_dir, out_file_stub))
-# params_list <- readRDS(sprintf('%s/%s_params_list.RDS', out_dir, out_file_stub))
-# model_fit <- readRDS(sprintf('%s/%s_model_fit.RDS', out_dir, out_file_stub))
-# sdrep <- readRDS(sprintf('%s/%s_sdrep.RDS',out_dir, out_file_stub))
-
-
 ## Create post-estimation predictive objects -----------------------------------
 
 mu <- c(sdrep$par.fixed, sdrep$par.random)
 parnames <- names(mu)
 keep_fields <- which(parnames %in% c('beta_covs', 'beta_ages', 'Z_stwa'))
+parnames_sub <- parnames[keep_fields]
 
-draws <- rmvnorm_prec(
-  mu = mu[keep_fields],
-  prec = sdrep$jointPrecision[keep_fields, keep_fields],
-  n.sims = 100
+if(sum(parnames=='Z_stwa') != nrow(template_dt)) stop("Issue with draw dimensions")
+
+tictoc::tic(sprintf("%i draws", config$num_draws))
+pryr::mem_change(
+  draws <- covidemr::rmvnorm_prec(
+    mu = mu[keep_fields],
+    prec = sdrep$jointPrecision[keep_fields, keep_fields],
+    n.sims = config$num_draws
+  )
 )
+tictoc::toc()
+
+
+## Generate predictions by location-year-week-age
+
+# Reorder template matrix by age-week-year-location
+# This is the reverse ordering of the random effect dimensions, accounting for 
+# how arrays are translated into vectors
+template_dt <- template_dt[order(idx_age, idx_week, idx_year, idx_loc)]
+
+# Draws == logit^-1( Covariate effects + age fixed effect + stwa RE + nugget )
+# Covariate effects
+cov_fes <- as.matrix(template_dt[, ..use_covs]) %*% draws[parnames_sub=='beta_covs',]
+# Age fixed effect
+age_fes <- rbind(0, draws[parnames_sub=='beta_ages',])[ template_dt$idx_age + 1, ]
+# Add it all together and take the inverse logit
+preds <- plogis(cov_fes + age_fes + draws[parnames_sub=='Z_stwa', ])
+
+# Get mean, lower, upper
+summs <- cbind(
+  rowMeans(preds), matrixStats::rowQuantiles(preds, probs=c(0.5, 0.025, 0.975))
+)
+colnames(summs) <- c('mean','median','lower','upper') 
+summs <- cbind(template_dt, summs)
+
+
+## Save all model output files
+model_results_dir <- config$path$model_results
+
+for(obj_str in names(config$results_files)){
+  # Parse output file
+  out_fp <- glue::glue(config$results_files[[obj_str]])
+  message(glue::glue("Saving {obj_str} to {out_fp}"))
+
+  # Save to file differently depending on format
+  if(endsWith(tolower(out_fp), 'rds')){
+    saveRDS(get(obj_str), file = out_fp)
+  } else if(endsWith(tolower(out_fp), 'csv')){
+    fwrite(get(obj_str), file = out_fp, row.names = FALSE)
+  } else {
+    stop(sprintf("Save function not enabled for file type of %s", out_fp))
+  }
+}
+
+message("*** FIN ***")
