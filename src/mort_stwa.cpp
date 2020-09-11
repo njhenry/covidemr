@@ -191,7 +191,7 @@ Type objective_function<Type>::operator() () {
     PARALLEL_REGION jnll -= dnorm(sigma_age, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_nugget, Type(0.0), Type(0.1), true);
 
-    if(use_Z_fourier){
+    if(use_Z_fourier == 1){
       // N(0, 3) prior for harmonics
       for(int i = 0; i < Z_fourier.rows(); i++){
         for(int j = 0; j < Z_fourier.cols(); j++){
@@ -250,7 +250,7 @@ Type objective_function<Type>::operator() () {
         if(use_Z_sta == 1){
           struct_res_i[i] += Z_sta[idx_loc[i], idx_year[i], idx_age[i]];          
         }
-        if(use_Z_fourier){
+        if(use_Z_fourier == 1){
           for(int lev=1; lev <= harmonics_level; lev++){
             struct_res_i[i] += Z_fourier[idx_fourier[i], 2*(lev)-2] * sin(lev * (idx_week[i] + 1.0) * year_freq ) + \
               Z_fourier[idx_fourier[i], 2*(lev)-1] * cos(lev * (idx_week[i] + 1.0) * year_freq);
