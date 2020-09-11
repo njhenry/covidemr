@@ -252,8 +252,8 @@ Type objective_function<Type>::operator() () {
         }
         if(use_Z_fourier){
           for(int lev=1; lev <= harmonics_level; lev++){
-            struct_res_i[i] += sin(lev * Z_fourier[idx_fourier[i], 2*(lev)-2] * (idx_week[i] + 1.0) * year_freq ) + \
-              cos(lev * Z_fourier[idx_fourier[i], 2*(lev)-1] * (idx_week[i] + 1.0) * year_freq);
+            struct_res_i[i] += Z_fourier[idx_fourier[i], 2*(lev)-2] * sin(lev * (idx_week[i] + 1.0) * year_freq ) + \
+              Z_fourier[idx_fourier[i], 2*(lev)-1] * cos(lev * (idx_week[i] + 1.0) * year_freq);
           }
         }
         
