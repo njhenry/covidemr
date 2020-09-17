@@ -134,7 +134,7 @@ generate_stwa_draws <- function(
   param_draws <- rmvnorm_prec(
     mu = mu,
     prec = tmb_sdreport$jointPrecision,
-    n.sums = num_draws
+    n.sims = num_draws
   )
   rownames(param_draws) <- parnames
   tictoc::toc()
