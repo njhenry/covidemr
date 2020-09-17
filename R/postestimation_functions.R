@@ -147,9 +147,9 @@ generate_stwa_draws <- function(
 
   # Prediction = exp( Covar FEs + age FEs + REs + sometimes seasonality )
   # Covariate fixed effects
-  cov_fes <- as.matrix(template_dt[, ..use_covs]) %*% param_draws['beta_covs', ]
+  cov_fes <- as.matrix(template_dt[, ..use_covs]) %*% param_draws[parnames=='beta_covs', ]
   # Age fixed effects
-  age_fes <- rbind(0, param_draws['beta_ages', ])[ templ$idx_age + 1 ]
+  age_fes <- rbind(0, param_draws[parnames=='beta_ages', ])[ templ$idx_age + 1 ]
 
   # Random effects -- structure varies
   res <- matrix(0., nrow=nrow(templ), ncol=num_draws)
@@ -157,7 +157,7 @@ generate_stwa_draws <- function(
   if(any(parnames=='Z_stwa')){
     message(" - Adding joint location-year-week-age random effect")
     if(nrow(res) != nrow(param_draws["Z_stwa", ])) stop("Z_stwa dims issue")
-    res <- res + param_draws["Z_stwa", ]
+    res <- res + param_draws[parnames=="Z_stwa", ]
   }
 
   if(any(parnames=='Z_sta')){
@@ -166,7 +166,7 @@ generate_stwa_draws <- function(
     n_weeks <- max(templ$idx_week) + 1
     n_years <- max(templ$idx_year) + 1
     n_locs <- max(templ$idx_loc) + 1
-    if(sum(param_draws == 'Z_sta') != n_ages * n_years * n_locs){
+    if(sum(parnames == 'Z_sta') != (n_ages * n_years * n_locs)){
       stop("Z_sta dims issue")
     }
     # Repeat year-location random effects (# weeks) times within each age group
@@ -175,7 +175,7 @@ generate_stwa_draws <- function(
       rep(1:(n_years * n_locs), times = n_ages * n_weeks) +
       rep(((1:n_ages)-1) * (n_years*n_locs), each = n_years * n_locs * n_weeks)
     )
-    res <- res + param_draws['Z_sta',][z_sta_idx,]
+    res <- res + param_draws[parnames=='Z_sta',][z_sta_idx,]
   }
 
   if(any(parnames=='Z_fourier')){
@@ -187,17 +187,19 @@ generate_stwa_draws <- function(
     }
     num_f_groups <- sum(parnames=='Z_fourier') / f_ncol
     # Create a matrix of size (num weeks * fourier groups) by (num draws)
-    z_fourier <- Reduce("rbind", lapply(1:num_f_groups), function(f_group){
+    z_fourier <- Reduce("rbind", lapply(1:num_f_groups, function(f_group){
       terms_idx <- 0:(f_ncol - 1) * num_f_groups + f_group
       # Return (52) fit weekly values by draw
-      draw_list <- lapply(
+      draws_list <- lapply(
         1:num_draws, function(dd){
-          get_fourier_seasonality_fit(param_draws['Z_fourier',][terms_idx, dd])
+          get_fourier_seasonality_fit(
+            param_draws[parnames=='Z_fourier',][terms_idx, dd]
+          )
         })
       return(Reduce('cbind', draws_list))
-    })
+    }))
     # Create the associated lookup table
-    fourier_lookup <- CJ(idx_fourier = 1:num_f_groups, idx_week = 0:51)
+    fourier_lookup <- CJ(idx_fourier = (1:num_f_groups) - 1, idx_week = 0:51)
     fourier_lookup[, f_row := .I ]
     templ[fourier_lookup, on=c('idx_fourier', 'idx_week'), f_row := f_row ]
     # Add seasonality random effect
