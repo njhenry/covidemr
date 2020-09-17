@@ -9,7 +9,8 @@
 #'
 #' @return Normalized ADFunction
 #'
-#' @import TMB tictoc
+#' @import TMB
+#' @import tictoc
 #' @export
 normalize_adfun <- function(adfun, flag, verbose=FALSE){
   if(verbose) message(" - Running normalization")
@@ -28,7 +29,8 @@ normalize_adfun <- function(adfun, flag, verbose=FALSE){
 #' @param adfun The ADFunction to normalize
 #' @param verbose [bool, default FALSE] return a message about normalization?
 #'
-#' @import TMB tictoc
+#' @import TMB
+#' @import tictoc
 #' @export
 run_sparsity_algorithm <- function(adfun, verbose=FALSE){
   if(verbose) message(" - Running symbolic analysis to reduce run time")
@@ -71,7 +73,7 @@ run_sparsity_algorithm <- function(adfun, verbose=FALSE){
 #'   nlminb object)
 #'
 #' @useDynLib covidemr
-#' @import TMB glue tictoc stats
+#' @import TMB glue tictoc
 #' @export
 setup_run_tmb <- function(
   tmb_data_stack, params_list, tmb_random, tmb_map, DLL, tmb_outer_maxsteps,
@@ -129,16 +131,6 @@ setup_run_tmb <- function(
     fe_lower_vec <- -Inf
     fe_upper_vec <- Inf
   }
-  # Get hessian
-  obj$he <- function(x=obj$env$last.par.best[-obj$env$random], disable.tracing=TRUE, ...){ 
-   if(disable.tracing) {
-    tracemgc.old <- obj$env$tracemgc; obj$env$tracemgc <- FALSE; on.exit(obj$env$tracemgc <- tracemgc.old)
-    inner.trace.old <- obj$env$inner.control$trace; obj$env$inner.control$trace <- FALSE; on.exit(obj$env$inner.control$trace <- inner.trace.old, add = TRUE)
-    silent.old <- obj$env$silent; obj$env$silent <- TRUE; on.exit(obj$env$silent <- silent.old, add = TRUE)
-   }
-   optimHess(x, obj$fn, obj$gr, ...)
-  }
-
   # Optimize using nlminb
   vbmsg("Optimizing using nlminb:")
   tictoc::tic("  Optimization")
@@ -146,7 +138,6 @@ setup_run_tmb <- function(
     start = obj$par,
     objective = obj$fn,
     gradient = obj$gr,
-    hessian = obj$he,
     lower = fe_lower_vec,
     upper = fe_upper_vec,
     control = list(
