@@ -115,7 +115,7 @@ generate_stwa_draws <- function(
   if(!"jointPrecision" %in% names(tmb_sdreport)) stop("Missing joint precision matrix")
   # Check that all the covariate names are there
   missing_covs <- setdiff(covariate_names, names(templ))
-  if(any(missing_covs)){
+  if(length(missing_covs) > 0){
     stop("Missing covariates: ", paste0(missing_covs, collapse=', '))
   }
   if(length(covariate_names) != sum(parnames == 'beta_covs')){
@@ -124,7 +124,7 @@ generate_stwa_draws <- function(
   # Check that template data.table has all required columns
   template_req_cols <- paste0('idx_', c('loc','year','week','age','fourier'))
   missing_templ_cols <- setdiff(template_req_cols, names(templ))
-  if(any(missing_templ_cols)){
+  if(length(missing_templ_cols) > 0){
     stop("Missing columns: ", paste0(missing_templ_cols, collapse=', '))
   }
 
