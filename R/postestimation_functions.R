@@ -228,7 +228,7 @@ generate_stwa_draws <- function(
 #' @export
 summarize_draws <- function(draws){
   summs <- cbind(
-    rowMeans(preds), matrixStats::rowQuantiles(preds, probs=c(0.5, 0.025, 0.975))
+    rowMeans(draws), matrixStats::rowQuantiles(draws, probs=c(0.5, 0.025, 0.975))
   )
   colnames(summs) <- c('mean','median','lower','upper')
   return(as.data.table(summs))
