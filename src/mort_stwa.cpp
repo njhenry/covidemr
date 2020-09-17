@@ -192,10 +192,10 @@ Type objective_function<Type>::operator() () {
     PARALLEL_REGION jnll -= dnorm(sigma_nugget, Type(0.0), Type(0.1), true);
 
     if(use_Z_fourier == 1){
-      // N(0, 3) prior for harmonics
+      // N(0, 1) prior for harmonics
       for(int i = 0; i < Z_fourier.rows(); i++){
         for(int j = 0; j < Z_fourier.cols(); j++){
-          PARALLEL_REGION jnll -= dnorm(Z_fourier(i, j), Type(0.0), Type(3.0), true);
+          PARALLEL_REGION jnll -= dnorm(Z_fourier(i, j), Type(0.0), Type(1.0), true);
         }
       }
     }
