@@ -125,20 +125,3 @@ setup_run_tmb <- function(
   return(list(obj=obj, opt=opt))
 }
 
-
-#' Take multivariate normal draws given a mean vector and precision matrix
-#'
-#' @param mu vector of parameter means
-#' @param prec joint precision matrix
-#' @param n.sims number of draws
-#'
-#' @return length(mu) by n.sims matrix of parameter draws
-#'
-#' @import matrixcalc
-#' @import Matrix
-#' @export
-rmvnorm_prec <- function(mu, prec, n.sims) {
-  z = matrix(rnorm(length(mu) * n.sims), ncol=n.sims)
-  L_inv = Matrix::Cholesky(prec, super=TRUE)
-  return(mu + solve(as(L_inv, 'pMatrix'), solve(t(as.matrix(as(L_inv, 'Matrix'))), z)))
-}
