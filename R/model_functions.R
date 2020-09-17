@@ -15,7 +15,7 @@
 normalize_adfun <- function(adfun, flag, verbose=FALSE){
   if(verbose) message(" - Running normalization")
   if(verbose) tictoc::tic("    Normalization")
-  normalized <- tmb::normalize(adfun, flag=flag)
+  normalized <- TMB::normalize(adfun, flag=flag)
   if(verbose) tictoc::toc()
   return(normalized)
 }
