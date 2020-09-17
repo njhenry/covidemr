@@ -18,11 +18,11 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## Settings 
 ## TODO: Convert to command line
-run_sex <- 'female'
+run_sex <- 'male'
 prepped_data_version <- '20200909'
-model_run_version <- '20200910'
+model_run_version <- '20200916'
 holdout <- 0
-use_covs <- c('intercept','tfr','unemp','socserv')
+use_covs <- c('intercept') # 'tfr','unemp','socserv'
 use_Z_stwa <- FALSE
 use_Z_sta <- !use_Z_stwa
 use_Z_fourier <- !use_Z_stwa
@@ -62,7 +62,7 @@ template_dt <- template_dt[sex==run_sex, ]
 
 prepped_data <- prepped_data[sex==run_sex, ]
 # Set holdout IDs
-prepped_data[, idx_fourier := idx_age ]
+prepped_data[, idx_fourier := 0 ] # Alternate option: group by age
 prepped_data$idx_holdout <- 1
 
 # Subset to only input data for this model
@@ -142,11 +142,15 @@ if( !use_Z_sta ){
 if( !use_Z_fourier ){
   tmb_map$Z_fourier <- rep(as.factor(NA), prod(dim(params_list$Z_fourier)))
 }
+tmb_map$nugget <- rep(as.factor(NA), length(params_list$nugget))
+tmb_map$rho_week_trans <- as.factor(NA)
+tmb_map$log_sigma_week <- as.factor(NA)
+tmb_map$log_sigma_nugget <- as.factor(NA)
 
 tmb_random <- c('nugget')
 if(use_Z_stwa) tmb_random <- c(tmb_random, 'Z_stwa')
 if(use_Z_sta) tmb_random <- c(tmb_random, 'Z_sta')
-if(use_Z_fourier) tmb_random <- c(tmb_random, "Z_fourier")
+# if(use_Z_fourier) tmb_random <- c(tmb_random, "Z_fourier")
 
 ## Run modeling!
 model_fit <- setup_run_tmb(
@@ -162,20 +166,15 @@ model_fit <- setup_run_tmb(
 sdrep <- sdreport(model_fit$obj, bias.correct = TRUE, getJointPrecision = TRUE)
 
 
-## Save outputs ----------------------------------------------------------------
-
-out_file_stub <- sprintf("%s_holdout%i", run_sex, holdout)
-out_dir <- file.path(config$paths$model_results, model_run_version)
-dir.create(out_dir, showWarnings = FALSE)
 
 ## Create post-estimation predictive objects -----------------------------------
 
 mu <- c(sdrep$par.fixed, sdrep$par.random)
 parnames <- names(mu)
-keep_fields <- which(parnames %in% c('beta_covs', 'beta_ages', 'Z_stwa'))
+keep_fields <- which(parnames %in% c('beta_covs', 'beta_ages', 'Z_stwa', 'Z_sta', 'Z_fourier'))
 parnames_sub <- parnames[keep_fields]
 
-if(sum(parnames=='Z_stwa') != nrow(template_dt)) stop("Issue with draw dimensions")
+# if(sum(parnames=='Z_stwa') != nrow(template_dt)) stop("Issue with draw dimensions")
 
 tictoc::tic(sprintf("%i draws", config$num_draws))
 pryr::mem_change(
@@ -210,6 +209,12 @@ summs <- cbind(
 colnames(summs) <- c('mean','median','lower','upper') 
 summs <- cbind(template_dt, summs)
 
+
+## Save outputs ----------------------------------------------------------------
+
+out_file_stub <- sprintf("%s_holdout%i", run_sex, holdout)
+out_dir <- file.path(config$paths$model_results, model_run_version)
+dir.create(out_dir, showWarnings = FALSE)
 
 ## Save all model output files
 model_results_dir <- config$path$model_results
