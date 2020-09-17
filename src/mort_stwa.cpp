@@ -183,6 +183,11 @@ Type objective_function<Type>::operator() () {
       PARALLEL_REGION jnll -= dnorm(beta_covs(j), Type(0.0), Type(3.0), true);
     }
 
+    // N(0, 3) prior for age effects
+    for(int j = 0; j < beta_ages.size(); j++){
+      PARALLEL_REGION jnll -= dnorm(beta_ages(j), Type(0.0), Type(3.0), true);
+    }
+
     // N(0, 3) prior for sigmas
     // TODO: Try messing with variance
     PARALLEL_REGION jnll -= dnorm(sigma_loc, Type(0.0), Type(3.0), true);
