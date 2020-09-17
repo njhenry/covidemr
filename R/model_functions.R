@@ -35,7 +35,7 @@ normalize_adfun <- function(adfun, flag, verbose=FALSE){
 run_sparsity_algorithm <- function(adfun, verbose=FALSE){
   if(verbose) message(" - Running symbolic analysis to reduce run time")
   tictoc::tic("    Symbolic analysis")
-  suppressMessages(suppressWarnings(TMB::runSymbolicAnalysis(obj)))
+  suppressMessages(suppressWarnings(TMB::runSymbolicAnalysis(adfun)))
   tictoc::toc()
   invisible()
 }
