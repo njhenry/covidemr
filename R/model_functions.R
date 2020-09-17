@@ -1,3 +1,44 @@
+#' Run TMB normalization
+#'
+#' @description Get the TMB normalization constant from random effects
+#'
+#' @param adfun The ADFunction to normalize
+#' @param flag [char] flag to indicate when random effects only have been
+#'   incorporated into the joint negative log-likelihood
+#' @param verbose [bool, default FALSE] return a message about normalization?
+#'
+#' @return Normalized ADFunction
+#'
+#' @import TMB
+#' @import tictoc
+#' @export
+normalize_adfun <- function(adfun, flag, verbose=FALSE){
+  if(verbose) message(" - Running normalization")
+  if(verbose) tictoc::tic("    Normalization")
+  normalized <- tmb::normalize(adfun, flag=flag)
+  if(verbose) tictoc::toc()
+  return(normalized)
+}
+
+
+#' Run TMB precision matrix sparsity algorithm
+#'
+#' @description Run "symbolic analysis", a set of algorithms that prune the
+#'   precision matrix to increase sparsity and speed up optimization
+#'
+#' @param adfun The ADFunction to normalize
+#' @param verbose [bool, default FALSE] return a message about normalization?
+#'
+#' @import TMB
+#' @import tictoc
+#' @export
+run_sparsity_algorithm <- function(adfun, verbose=FALSE){
+  if(verbose) message(" - Running symbolic analysis to reduce run time")
+  tictoc::tic("    Symbolic analysis")
+  suppressMessages(suppressWarnings(TMB::runSymbolicAnalysis(obj)))
+  tictoc::toc()
+  invisible()
+}
 
 #' Set up and run TMB
 #'
@@ -60,6 +101,7 @@ setup_run_tmb <- function(
 
   # Add a flag to the data input stack if normalize is specified
   if(normalize) tmb_data_stack$flag <- 1
+
   # Make Autodiff function
   vbmsg("Constructing ADFunction...")
   tictoc::tic("  Making Model ADFun")
@@ -75,21 +117,9 @@ setup_run_tmb <- function(
   obj$env$inner.control$trace <- as.integer(verbose)
   tictoc::toc()
   # Optionally run a normalization fix for models with large random effect sets
-  if(normalize){
-    vbmsg("Running normalization fix:")
-    tictoc::tic("  Normalization")
-    obj <- TMB::normalize(obj, flag='flag')
-    tictoc::toc()
-  }
+  if(normalize) obj <- normalize_adfun(adfun=obj, flag='flag', verbose=verbose)
   # Optionally run optimization algorithms to improve model run time
-  if(run_symbolic_analysis){
-    vbmsg("Running symbolic analysis to reduce run time:")
-    tictoc::tic("  Running symbolic analysis")
-    symbolic_output <- suppressMessages(suppressWarnings(utils::capture.output(
-      TMB::runSymbolicAnalysis(obj)
-    )))
-    tictoc::toc()
-  }
+  if(run_symbolic_analysis) run_sparsity_algorithm(adfun=obj, verbose=verbose)
   # Optionally set upper and lower limits for fixed effects
   fe_names <- names(obj$par)
   if(set_limits==TRUE){
