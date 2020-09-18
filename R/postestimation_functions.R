@@ -260,7 +260,7 @@ get_excess_death_draws <- function(death_data, baseline_draws, template_dt){
   # Correct for nonstandard weeks so that 7 days are effectively observed
   templ[, deaths_corrected := deaths * 7. / observed_days ]
   # Compare to baseline draws
-  excess_draws <- baseline_draws[templ$row_id, ] - templ$deaths_corrected
+  excess_draws <- templ$deaths_corrected - templ$pop * baseline_draws[templ$row_id, ]
   # Return data.table of observed deaths and matrix of excess
   return(list(obs_deaths = templ, excess_draws = excess_draws))
 }
