@@ -215,6 +215,57 @@ generate_stwa_draws <- function(
 }
 
 
+#' Get draws of excess deaths
+#' 
+#' @description The traditional calculation for COVID excess mortality 
+#'   calculates excess deaths by subtracting the observed number of deaths from
+#'   an estimated baseline. This function subtracts the observed value (a
+#'   single value) from the baseline (by draw) to get draws of excess.
+#' 
+#' @param baseline_draws Predicted draws for the number of deaths that would
+#'   occur in the absence of COVID
+#' @param template_dt The template data.table linking predictive draws
+#' @param death_data Dataset containing the true number of deaths by location,
+#'   year, week, and age group. The true deaths will be matched to the predicted
+#'   counterfactual deaths (by way of the `template_dt`) and one subtracted from
+#'   the other to estimate excess.
+#' 
+#' @return Named list containing two items:
+#'   - 'obs_deaths': Data.table of observed deaths
+#'   - 'excess_draws': Matrix containing excess mortality draws by 
+#'       location/year/week/age. Each row of this matrix corresponds to a row in
+#'       `obs_deaths`.
+#' 
+#' @import data.table
+#' @export
+excess_draws <- function(death_data, baseline_draws, template_dt){
+  # Subset to out-of-sample location/year/week/ages
+  templ <- copy(template_dt)
+  templ[, row_id := .I ]
+  deaths_sub <- death_data[in_baseline == 0, ]
+  templ <- templ[
+    (idx_loc %in% deaths_sub$idx_loc) & 
+    (idx_year %in% deaths_sub$idx_year) & 
+    (idx_week %in% deaths_sub$idx_week) & 
+    (idx_age %in% deaths_sub$idx_age),
+  ]
+  # Merge on deaths and observed days
+  templ[
+    deaths_sub,
+    on=c('idx_loc','idx_year','idx_week','idx_age'),
+    `:=` (deaths = i.deaths, observed_days = i.observed_days)
+  ]
+  # Fill missing deaths with zeroes
+  templ[is.na(deaths), `:=` (deaths = 0, observed_days = 7)]
+  # Correct for nonstandard weeks so that 7 days are effectively observed
+  templ[, deaths_corrected := deaths * 7. / observed_days ]
+  # Compare to baseline draws
+  excess_draws <- baseline_draws[templ$row_id, ] - templ$deaths_corrected
+  # Return data.table of observed deaths and matrix of excess
+  return(list(obs_deaths = templ, excess_draws = excess_draws))
+}
+
+
 #' Summarize predictive draws
 #'
 #' @description Summarize the mean and select quantiles of a matrix of posterior
@@ -233,3 +284,5 @@ summarize_draws <- function(draws){
   colnames(summs) <- c('mean','median','lower','upper')
   return(as.data.table(summs))
 }
+
+

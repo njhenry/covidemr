@@ -3,6 +3,7 @@
 export(backfill_input_data)
 export(build_adjacency_matrix)
 export(create_age_groups)
+export(excess_draws)
 export(extend_covar_time_series)
 export(generate_stwa_draws)
 export(get_fourier_seasonality_fit)
