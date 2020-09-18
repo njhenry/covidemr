@@ -66,6 +66,9 @@ run_sparsity_algorithm <- function(adfun, verbose=FALSE){
 #'   maximum value for any fixed effect
 #' @param limit_min [numeric, default -limit_max] If limits are set in the model,
 #'   minimum value of any fixed effect
+#' @param optimization_methods [char] Character vector naming optimization 
+#'   to try in optimx. The first method that converges (returns `convcode==0`)
+#'   will be returned.
 #' @param model_name [char, default "model"] name of the model
 #' @param verbose [boolean, default FALSE] Should this function return
 #'
@@ -78,8 +81,9 @@ run_sparsity_algorithm <- function(adfun, verbose=FALSE){
 setup_run_tmb <- function(
   tmb_data_stack, params_list, tmb_random, tmb_map, DLL, tmb_outer_maxsteps,
   tmb_inner_maxsteps, run_symbolic_analysis=FALSE, normalize=FALSE,
-  set_limits=FALSE, limit_max=10, limit_min=-limit_max, model_name="model",
-  verbose=FALSE
+  set_limits=FALSE, limit_max=10, limit_min=-limit_max, 
+  optimization_methods = c('L-BFGS-B','nlminb','Rcgmin','spg','bobyqa','CG','Nelder-Mead'),
+  model_name="model", verbose=FALSE
 ){
   # Helper function to send a message only if verbose
   vbmsg <- function(x) if(verbose) message(x)
@@ -134,10 +138,9 @@ setup_run_tmb <- function(
   # Optimize using nlminb
   tictoc::tic("  Optimization")
   # Try optimizing using a variety of algorithms (all fit in optimx)
-  valid_methods <- c('nlminb','L-BFGS-B','Rcgmin','spg','bobyqa','CG','Nelder-Mead')
-  for(this_method in valid_methods){
+  for(this_method in optimization_methods){
     message(glue("\n** OPTIMIZING USING METHOD {this_method} **"))
-    opt <- optimx(
+    opt <- suppressWarnings(optimx(
       par = obj$par,
       fn = function(x) as.numeric(obj$fn(x)),
       gr = obj$gr,
@@ -152,7 +155,7 @@ setup_run_tmb <- function(
         maxit = tmb_inner_maxsteps,
         reltol = 1e-10
       )
-    )
+    ))
     if(opt$convcode == 0){
       message(glue("Optimization converged using method {this_method}!"))
       break()

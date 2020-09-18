@@ -17,6 +17,8 @@ setup_run_tmb(
   set_limits = FALSE,
   limit_max = 10,
   limit_min = -limit_max,
+  optimization_methods = c("L-BFGS-B", "nlminb", "Rcgmin", "spg", "bobyqa", "CG",
+    "Nelder-Mead"),
   model_name = "model",
   verbose = FALSE
 )
@@ -52,6 +54,10 @@ maximum value for any fixed effect}
 
 \item{limit_min}{[numeric, default -limit_max] If limits are set in the model,
 minimum value of any fixed effect}
+
+\item{optimization_methods}{[char] Character vector naming optimization 
+to try in optimx. The first method that converges (returns `convcode==0`)
+will be returned.}
 
 \item{model_name}{[char, default "model"] name of the model}
 
