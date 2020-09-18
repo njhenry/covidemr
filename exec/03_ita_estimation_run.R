@@ -19,10 +19,10 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 ## Settings 
 ## TODO: Convert to command line
 run_sex <- 'male'
-prepped_data_version <- '20200909'
-model_run_version <- '20200916'
+prepped_data_version <- '20200917'
+model_run_version <- '20200917'
 holdout <- 0
-use_covs <- c('intercept') # 'tfr','unemp','socserv'
+use_covs <- c('intercept') # , 'tfr','unemp','socserv'
 use_Z_stwa <- FALSE
 use_Z_sta <- !use_Z_stwa
 use_Z_fourier <- !use_Z_stwa
@@ -59,6 +59,7 @@ adjmat <- readRDS(prep_file('adjacency_matrix'))
 
 ## Subset data to sex being modeled; merge indices on prepared data
 template_dt <- template_dt[sex==run_sex, ]
+template_dt[, idx_fourier := 0 ]
 
 prepped_data <- prepped_data[sex==run_sex, ]
 # Set holdout IDs
@@ -66,7 +67,7 @@ prepped_data[, idx_fourier := 0 ] # Alternate option: group by age
 prepped_data$idx_holdout <- 1
 
 # Subset to only input data for this model
-in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baseline==1), ]
+in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baselin=e=1), ]
 
 
 data_stack <- list(
@@ -160,7 +161,8 @@ model_fit <- setup_run_tmb(
   tmb_map=tmb_map,
   normalize = TRUE, run_symbolic_analysis = TRUE,
   tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000, 
-  model_name="ITA deaths model", verbose=TRUE
+  model_name="ITA deaths model", verbose=FALSE,
+  optimization_methods = c('nlminb', 'L-BFGS-B')
 )
 
 sdrep <- sdreport(model_fit$obj, bias.correct = TRUE, getJointPrecision = TRUE)
@@ -169,45 +171,33 @@ sdrep <- sdreport(model_fit$obj, bias.correct = TRUE, getJointPrecision = TRUE)
 
 ## Create post-estimation predictive objects -----------------------------------
 
-mu <- c(sdrep$par.fixed, sdrep$par.random)
-parnames <- names(mu)
-keep_fields <- which(parnames %in% c('beta_covs', 'beta_ages', 'Z_stwa', 'Z_sta', 'Z_fourier'))
-parnames_sub <- parnames[keep_fields]
-
-# if(sum(parnames=='Z_stwa') != nrow(template_dt)) stop("Issue with draw dimensions")
-
-tictoc::tic(sprintf("%i draws", config$num_draws))
-pryr::mem_change(
-  draws <- covidemr::rmvnorm_prec(
-    mu = mu[keep_fields],
-    prec = sdrep$jointPrecision[keep_fields, keep_fields],
-    n.sims = config$num_draws
-  )
+# Draws of parameters and baseline modeled deaths (assuming no COVID)
+postest_draws_list <- covidemr::generate_stwa_draws(
+  tmb_sdreport = sdrep,
+  num_draws = config$num_draws,
+  covariate_names = use_covs,
+  template_dt = template_dt,
+  fourier_harmonics_level = fourier_levels
 )
-tictoc::toc()
+param_draws <- postest_draws_list$param_draws
+pred_draws <- postest_draws_list$predictive_draws
+# Summarize draws
+pred_summary <- cbind(template_dt, summarize_draws(pred_draws))
 
-
-## Generate predictions by location-year-week-age
-
-# Reorder template matrix by age-week-year-location
-# This is the reverse ordering of the random effect dimensions, accounting for 
-# how arrays are translated into vectors
-template_dt <- template_dt[order(idx_age, idx_week, idx_year, idx_loc)]
-
-# Draws == logit^-1( Covariate effects + age fixed effect + stwa RE + nugget )
-# Covariate effects
-cov_fes <- as.matrix(template_dt[, ..use_covs]) %*% draws[parnames_sub=='beta_covs',]
-# Age fixed effect
-age_fes <- rbind(0, draws[parnames_sub=='beta_ages',])[ template_dt$idx_age + 1, ]
-# Add it all together and take the inverse logit
-preds <- plogis(cov_fes + age_fes + draws[parnames_sub=='Z_stwa', ])
-
-# Get mean, lower, upper
-summs <- cbind(
-  rowMeans(preds), matrixStats::rowQuantiles(preds, probs=c(0.5, 0.025, 0.975))
+# Generate draws of excess mortality (true deaths - baseline)
+excess_draws_list <- covidemr::get_excess_death_draws(
+  template_dt = template_dt,
+  baseline_draws = pred_draws,
+  death_data = prepped_data[in_baseline==0,]
 )
-colnames(summs) <- c('mean','median','lower','upper') 
-summs <- cbind(template_dt, summs)
+excess_index <- excess_draws_list$obs_deaths
+excess_draws <- excess_draws_list$excess_draws
+proportion_draws <- excess_draws_list$proportion_draws
+# Summarize draws
+prop_summ <- summarize_draws(proportion_draws)
+names(prop_summ) <- paste0('prop_',names(prop_summ))
+excess_summary <- cbind(excess_index, summarize_draws(excess_draws), prop_summ)
+
 
 
 ## Save outputs ----------------------------------------------------------------
