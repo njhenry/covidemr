@@ -18,7 +18,7 @@ devtools::load_all(dev_fp)
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## TODO: Load using command line argument
-prepped_data_version <- '20200909'
+prepped_data_version <- '20200917'
 
 # Load prepared location table
 prepped_data_dir <- file.path(config$paths$prepped_data, prepped_data_version)
