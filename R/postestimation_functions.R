@@ -255,6 +255,11 @@ get_excess_death_draws <- function(death_data, baseline_draws, template_dt){
     on=c('idx_loc','idx_year','idx_week','idx_age'),
     `:=` (deaths = i.deaths, observed_days = i.observed_days)
   ]
+  templ[
+    unique(deaths_sub[, .(idx_loc, idx_year, idx_age, pop)]),
+    on = c('idx_loc', 'idx_year'),
+    pop := i.pop
+  ]
   # Fill missing deaths with zeroes
   templ[is.na(deaths), `:=` (deaths = 0, observed_days = 7)]
   # Correct for nonstandard weeks so that 7 days are effectively observed
