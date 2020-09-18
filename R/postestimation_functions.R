@@ -238,7 +238,7 @@ generate_stwa_draws <- function(
 #' 
 #' @import data.table
 #' @export
-excess_draws <- function(death_data, baseline_draws, template_dt){
+get_excess_death_draws <- function(death_data, baseline_draws, template_dt){
   # Subset to out-of-sample location/year/week/ages
   templ <- copy(template_dt)
   templ[, row_id := .I ]
