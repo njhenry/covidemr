@@ -73,7 +73,7 @@ run_sparsity_algorithm <- function(adfun, verbose=FALSE){
 #'   nlminb object)
 #'
 #' @useDynLib covidemr
-#' @import TMB glue tictoc
+#' @import TMB glue tictoc optimx
 #' @export
 setup_run_tmb <- function(
   tmb_data_stack, params_list, tmb_random, tmb_map, DLL, tmb_outer_maxsteps,
@@ -134,21 +134,36 @@ setup_run_tmb <- function(
   # Optimize using nlminb
   vbmsg("Optimizing using nlminb:")
   tictoc::tic("  Optimization")
-  opt <- do.call("nlminb", list(
-    start = obj$par,
-    objective = obj$fn,
-    gradient = obj$gr,
-    lower = fe_lower_vec,
-    upper = fe_upper_vec,
-    control = list(
-      rel.tol = max(1e-12, .Machine$double.eps^(2/3)),
-      x.tol = max(1e-12, .Machine$double.eps^(1/2)),
-      eval.max = tmb_outer_maxsteps,
-      iter.max = tmb_inner_maxsteps,
-      trace = as.integer(verbose)
+  # Try optimizing using a variety of algorithms (all fit in optimx)
+  valid_methods <- c('nlminb','L-BFGS-B','Rcgmin','spg','bobyqa','CG','Nelder-Mead')
+  for(this_method in valid_methods){
+    message(glue("\n** OPTIMIZING USING METHOD {this_method} **"))
+    opt <- optimx(
+      par = obj$par,
+      fn = function(x) as.numeric(obj$fn(x)),
+      gradient = obj$gr,
+      lower = fe_lower_vec,
+      upper = fe_upper_vec,
+      method = this_method,
+      itnmax = tmb_outer_maxsteps,
+      control = list(
+        trace=1,
+        follow.on = FALSE,
+        dowarn = verbose,
+        maxit = tmb_inner_maxsteps,
+        reltol=1e-10
+      )
     )
-  ))
-  conv_code <- opt$convergence
+    if(opt$convcode == 0){
+      message(glue("Optimization converged using method {this_method}!"))
+      break()
+    } else {
+      message(glue(
+        "Optimization failed using method {this_method} (code {opt$convcode})\n"
+      ))
+    }
+  }
+  conv_code <- opt$convcode
   vbmsg(glue::glue(
     "{model_name} optimization finished with convergence code {conv_code}.\n"
   ))
