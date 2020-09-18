@@ -114,7 +114,7 @@ setup_run_tmb <- function(
     silent=TRUE
   )
   obj$env$tracemgc <- as.integer(verbose)
-  obj$env$inner.control$trace <- as.integer(verbose)
+  obj$env$inner.control$trace <- 0
   tictoc::toc()
   # Optionally run a normalization fix for models with large random effect sets
   if(normalize) obj <- normalize_adfun(adfun=obj, flag='flag', verbose=verbose)
@@ -132,7 +132,6 @@ setup_run_tmb <- function(
     fe_upper_vec <- Inf
   }
   # Optimize using nlminb
-  vbmsg("Optimizing using nlminb:")
   tictoc::tic("  Optimization")
   # Try optimizing using a variety of algorithms (all fit in optimx)
   valid_methods <- c('nlminb','L-BFGS-B','Rcgmin','spg','bobyqa','CG','Nelder-Mead')
@@ -141,17 +140,17 @@ setup_run_tmb <- function(
     opt <- optimx(
       par = obj$par,
       fn = function(x) as.numeric(obj$fn(x)),
-      gradient = obj$gr,
+      gr = obj$gr,
       lower = fe_lower_vec,
       upper = fe_upper_vec,
       method = this_method,
       itnmax = tmb_outer_maxsteps,
       control = list(
-        trace=1,
+        trace = as.integer(verbose),
         follow.on = FALSE,
-        dowarn = verbose,
+        dowarn = as.integer(verbose),
         maxit = tmb_inner_maxsteps,
-        reltol=1e-10
+        reltol = 1e-10
       )
     )
     if(opt$convcode == 0){
