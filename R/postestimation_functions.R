@@ -230,11 +230,13 @@ generate_stwa_draws <- function(
 #'   counterfactual deaths (by way of the `template_dt`) and one subtracted from
 #'   the other to estimate excess.
 #' 
-#' @return Named list containing two items:
+#' @return Named list containing three items:
 #'   - 'obs_deaths': Data.table of observed deaths
 #'   - 'excess_draws': Matrix containing excess mortality draws by 
 #'       location/year/week/age. Each row of this matrix corresponds to a row in
 #'       `obs_deaths`.
+#'   - 'proportion_draws': Same format as excess_draws, but containing the 
+#'        ratio of deaths compared to baseline rather than the difference
 #' 
 #' @import data.table
 #' @export
@@ -266,8 +268,11 @@ get_excess_death_draws <- function(death_data, baseline_draws, template_dt){
   templ[, deaths_corrected := deaths * 7. / observed_days ]
   # Compare to baseline draws
   excess_draws <- templ$deaths_corrected - templ$pop * baseline_draws[templ$row_id, ]
+  proportion_draws <- templ$deaths_corrected / (templ$pop * baseline_draws[templ$row_id, ])
   # Return data.table of observed deaths and matrix of excess
-  return(list(obs_deaths = templ, excess_draws = excess_draws))
+  return(list(
+    obs_deaths=templ, excess_draws=excess_draws, proportion_draws=proportion_draws
+  ))
 }
 
 

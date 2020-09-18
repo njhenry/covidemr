@@ -18,11 +18,13 @@ occur in the absence of COVID}
 \item{template_dt}{The template data.table linking predictive draws}
 }
 \value{
-Named list containing two items:
+Named list containing three items:
   - 'obs_deaths': Data.table of observed deaths
   - 'excess_draws': Matrix containing excess mortality draws by 
       location/year/week/age. Each row of this matrix corresponds to a row in
       `obs_deaths`.
+  - 'proportion_draws': Same format as excess_draws, but containing the 
+       ratio of deaths compared to baseline rather than the difference
 }
 \description{
 The traditional calculation for COVID excess mortality 
