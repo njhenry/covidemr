@@ -1,17 +1,22 @@
 
 #' Prepare an Italy covariate for modeling
 #'
-#' @description Generic function to prepare a covariate pulled from IStat data.
-#'   This function is a wrapper for sub-functions called for specific covariates
-#'   and will fail if a non-initialized covariate has been passed. It returns
-#'   both the prepared covariate and a vector of expected indices that can be
-#'   used to merge back onto the original dataset.
+#' @description Generic function to prepare a covariate for modeling. This
+#'   function is a wrapper for sub-functions called for specific covariates and
+#'   will fail if a non-initialized covariate has been passed. It returns both
+#'   the prepared covariate and a vector of expected indices that can be used
+#'   to merge back onto the original dataset.
 #'
-#' @param covar_data data.table containing the covariate
+#' @param covar_fp Filepath to the raw covariate
 #' @param covar_name Short name for the covariate. This will be used to send the
 #'   covariate to a particular prep function.
 #' @param model_years Vector of years to consider for modeling
 #' @param location_table Location code merge table for Italy
+#' @param pop_raster [optional] Population rasterBrick object, with one layer
+#'   per modeling year. Only used to prepare raster covariates, default NULL.
+#' @param polys_sf [optional] Polygon boundaries
+#' @param projection [optional] Character vector giving the proj4 CRS
+#'   definition. Example: "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs"
 #'
 #' @return A list of two items:
 #'   - "prepped_covar": data.table containing the prepped covariate
@@ -23,19 +28,23 @@
 #' @import data.table
 #' @export
 ita_prepare_covariate <- function(
-  covar_data, covar_name, model_years, location_table
+  covar_name, covar_fp, model_years, location_table, pop_raster = NULL,
+  polys_sf = NULL, projection = NULL
 ){
   # Check that an appropriate covariate function exists
   covar_func <- get_covar_prep_function(covar_name)
   # Apply the function to the data
-  message(paste(" - Preparing",covar_name))
+  message(" - Preparing ",covar_name)
   covar_out_list <- do.call(
     covar_func,
     args = list(
-      covar_data = covar_data,
+      covar_fp = covar_fp,
       model_years = model_years,
-      location_table = location_table
-    )
+      location_table = location_table,
+      pop_raster = pop_raster,
+      polys_sf = polys_sf,
+      projection = projection
+    )[names(formals(covar_func))]
   )
   # Check that output is valid
   check_covar_validity(
@@ -139,6 +148,7 @@ check_covar_validity <- function(
   invisible(NULL)
 }
 
+
 #' Extend a covariate time series forward
 #'
 #' @description Helper function to extend a covariate time series to the last
@@ -167,7 +177,7 @@ extend_covar_time_series <- function(covar_data, model_years){
       lapply(missing_years, function(yr) copy(most_recent_year)[, year := yr])
   ))[order(year)]
 
-  message("Extended forward for years ",paste(missing_years, collapse=', '))
+  message("    Extended forward for years ",paste(missing_years, collapse=', '))
   return(full_data)
 }
 
@@ -178,7 +188,7 @@ extend_covar_time_series <- function(covar_data, model_years){
 #'   This is a convenience function for specific use with datasets exported from
 #'   IStat.
 #'
-#' @param covar_data data.table containing the raw covariate data
+#' @param covar_fp Filepath to the raw covariate
 #' @param model_years Vector of years to consider for modeling
 #' @param location_table Location code merge table for Italy
 #'
@@ -186,8 +196,9 @@ extend_covar_time_series <- function(covar_data, model_years){
 #'
 #' @import data.table
 #' @export
-ita_prepare_covar_tfr <- function(covar_data, model_years, location_table){
+ita_prepare_covar_tfr <- function(covar_fp, model_years, location_table){
 
+  covar_data <- ita_read_istat_csv(covar_fp)
   setnames(covar_data, c('ITTER107','TIME','Value'), c('icode', 'year', 'tfr'))
 
   # Merge on location codes
@@ -224,7 +235,7 @@ ita_prepare_covar_tfr <- function(covar_data, model_years, location_table){
 #'   quarter. This is a convenience function for specific use with datasets
 #'   exported from IStat.
 #'
-#' @param covar_data data.table containing the raw covariate data
+#' @param covar_fp Filepath to the raw covariate
 #' @param model_years Vector of years to consider for modeling
 #' @param location_table Location code merge table for Italy
 #'
@@ -232,8 +243,9 @@ ita_prepare_covar_tfr <- function(covar_data, model_years, location_table){
 #'
 #' @import data.table
 #' @export
-ita_prepare_covar_unemp <- function(covar_data, model_years, location_table){
+ita_prepare_covar_unemp <- function(covar_fp, model_years, location_table){
 
+  covar_data <- ita_read_istat_csv(covar_fp)
   covar_indices <- c('location_code','sex','year')
 
   # Update names
@@ -279,7 +291,7 @@ ita_prepare_covar_unemp <- function(covar_data, model_years, location_table){
 #'   for families. This is a convenience function for specific use with datasets
 #'   exported from IStat.
 #'
-#' @param covar_data data.table containing the raw covariate data
+#' @param covar_fp Filepath to the raw covariate
 #' @param model_years Vector of years to consider for modeling
 #' @param location_table Location code merge table for Italy
 #'
@@ -287,8 +299,9 @@ ita_prepare_covar_unemp <- function(covar_data, model_years, location_table){
 #'
 #' @import data.table
 #' @export
-ita_prepare_covar_socserv <- function(covar_data, model_years, location_table){
+ita_prepare_covar_socserv <- function(covar_fp, model_years, location_table){
 
+  covar_data <- ita_read_istat_csv(covar_fp)
   covar_indices <- c('year', 'location_code')
 
   # Update names
@@ -321,3 +334,345 @@ ita_prepare_covar_socserv <- function(covar_data, model_years, location_table){
   # Return
   return(list(prepped_covar = prepped_covar, covar_indices = covar_indices))
 }
+
+
+#' Prepare covariate: proportion of households with income under E10k
+#'
+#' @description Covariate-specific prep function for proportion of households
+#'   with taxable income under 10,000 Euros per year. A related presentation of
+#'   this data is mean taxable income per household, prepared in another
+#'   function. This function is meant specifically for use with IStat data.
+#'
+#' @param covar_fp Filepath to the raw covariate
+#' @param model_years Vector of years to consider for modeling
+#' @param location_table Location code merge table for Italy
+#'
+#' @return data.table containing prepared covariate data and vector of indices
+#'
+#' @import data.table
+#' @export
+ita_prepare_covar_tax_brackets <- function(
+  covar_fp, model_years, location_table
+){
+
+  covar_indices <- c('year', 'location_code')
+  covar_data <- ita_read_istat_csv(covar_fp)
+  setnames(covar_data, 'TIME', 'year')
+
+  # Set the province code based on the comuna code
+  covar_data[, ITTER107 := as.character(ITTER107)]
+  covar_data[, loc_nc := nchar(ITTER107) ]
+  covar_data[, location_code := as.integer(substr(ITTER107, 1, loc_nc - 3))]
+
+  # Some provinces in Sardinia were reorganized in 2018: try to reassign the
+  #  provinces for those municipalities based on 2018 data
+  sard_provinces <- location_table[region_code == 20, location_code ]
+  sard_merge_table <- unique(covar_data[
+    (year == 2018) & (location_code %in% sard_provinces),
+    .(Territory, location_code)
+  ])
+
+  old_provs <- 104:107
+  existing_provinces <- covar_data[ !(location_code %in% old_provs), ]
+  sard_pre_2018 <- covar_data[location_code %in% old_provs,]
+  sard_pre_2018[
+    sard_merge_table, on='Territory', location_code := i.location_code
+  ]
+  # Reconstitute the full dataset with updated province codes
+  covar_data <- rbindlist(list(existing_provinces, sard_pre_2018), use.names=TRUE)
+
+  # Get the number of households with income less than 15k Euros
+  covar_data[, low_bk := IMPORTOEURO %in% c('E_UN0', 'E0-10000')]
+  prepped_covar <- covar_data[,
+    .(tax_brackets = .SD[low_bk==1, sum(Value, na.rm=T)] / sum(Value, na.rm=T)),
+    by = covar_indices
+  ]
+  # Extend for 2019-2020 and return
+  prepped_covar <- extend_covar_time_series(
+    covar_data = covar_prepped,
+    model_years = model_years
+  )
+  return(list(prepped_covar = prepped_covar, covar_indices = covar_indices))
+}
+
+
+#' Prepare covariate: access to healthcare facility
+#'
+#' @description Covariate-specific prep function for the average person's travel
+#'   time to the nearest healthcare facility (by motor vehicle).
+#'
+#' @param covar_fp Filepath to the raw covariate
+#' @param model_years Vector of years to consider for modeling
+#' @param location_table Location code merge table for Italy
+#' @param pop_raster [optional] Population rasterBrick object, with one layer
+#'   per modeling year. Only used to prepare raster covariates, default NULL.
+#' @param polys_sf [optional] Polygon boundaries
+#' @param projection [optional] Character vector giving the proj4 CRS
+#'   definition. Example: "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs"
+#'
+#' @return A list of two items:
+#'   - "prepped_covar": data.table containing the prepped covariate
+#'   - "covar_indices": Vector of identifiers that should be used to merge onto
+#'     the modeling dataset. The prepared covariate dataset should only include
+#'     identifier columns and the covariate value, specified by the covariate
+#'     name
+#'
+#' @import data.table raster fasterize
+#' @export
+ita_prepare_covar_hc_access <- function(
+  covar_fp, model_years, location_table, pop_raster, polys_sf, projection
+){
+
+  rast_raw <- raster::raster(covar_fp)
+  # Only use the final year of population data, which aligns with the access
+  #  dataset
+  pop <- pop_raster[[length(model_years)]]
+
+  # Crop in unprojected space first - this will make the projection much faster
+  unproj_extent <- raster::extent(
+    raster::projectRaster(pop, crs = crs(rast_raw))
+  )
+  buffered_extent <- raster::extent(
+    unproj_extent@xmin - .1, unproj_extent@xmax + .1,
+    unproj_extent@ymin - .1, unproj_extent@ymax + .1
+  )
+  rast_sub <- raster::crop(rast_raw, y = buffered_extent)
+
+  # Project, crop, resample and mask to population raster
+  rast_sub <- raster::projectRaster(rast_sub, crs = projection)
+  rast_sub <- raster::crop(x = rast_sub, y = pop)
+  rast_resampled <- raster::resample(x = rast_sub, y = pop, method = 'ngb')
+  rast_resampled <- raster::mask(x = rast_resampled, mask = pop)
+
+  # Rasterize polygons to get location code for each pixel, and get "average
+  #  access" using a population-weighted aggregation
+  locs_raster <- fasterize::fasterize(
+    sf = polys_sf, raster = pop, field = 'location_code', fun = 'last'
+  )
+  # If all dimensions align, run the population-weighted aggregation
+  if(any(dim(rast_resampled) != dim(pop))) stop("Access raster not aligned")
+  if(any(dim(pop) != dim(locs_raster))) stop("Location raster not aligned")
+  prepped_covar <- na.omit(data.table::data.table(
+    hc_access = as.vector(rast_resampled),
+    population = as.vector(pop),
+    location_code = as.vector(locs_raster)
+  ))[, .(hc_access = weighted.mean(hc_access, w=population)), by=location_code]
+  prepped_covar <- prepped_covar[order(location_code)]
+
+  return(list(prepped_covar = prepped_covar, covar_indices = 'location_code'))
+}
+
+
+#' Load and cache daily temperature data from API
+#'
+#' @description Pull daily temperature data from the Meteostat API. This
+#'   function uses cacheing: if the `cache_file` already exists, it pulls the
+#'   results from file rather than re-querying the API
+#'
+#' @param model_years Years of data to pull
+#' @param api_key API key for querying the Meteostat API
+#' @param prov_latlong Table indexing locations to latitute and longitude. Must
+#'   contain at least the following three fields:
+#'    - 'location_code': Numeric code identifying location
+#'    - 'lat': Latitude
+#'    - 'lon': Longitude
+#' @param cache_file File where the pulled data will be cached
+#' @param refresh_cache [optional, default FALSE] Should the data be re-pulled
+#'   even if a cache file exists?
+#'
+#' @return Data.table containing full Meteostat daily API data as well as
+#'  location code for all available years
+#'
+ita_temperature_query_api <- function(
+  model_years, api_key, prov_latlong, cache_file, refresh_cache = FALSE
+){
+  # Load and return cached file if it exists
+  if(file.exists(cache_file) & !refresh_cache){
+    return(fread(cache_file))
+  }
+
+  # Prepare a list to store individual API query results
+  temp_data_list <- vector('list', length=length(model_years))
+
+  # Iterate through years and locations to save on memory
+  for(year_idx in 1:length(model_years)){
+    model_year <- model_years[year_idx]
+    message("  Querying all province data for year ", model_year)
+    # For each province, query the API for daily weather patterns across the
+    #  year
+    temp_data_list[[year_idx]] <- vector('list', length=nrow(prov_latlong))
+    for(pnt_idx in 1:nrow(prov_latlong)){
+      cat('.'); flush.console();
+      this_prov_code <- prov_latlong[pnt_idx, location_code]
+      # Build query
+      meteo_query <- glue::glue(
+        "https://api.meteostat.net/v2/point/daily?lat={prov_latlong[pnt_idx, lat]}",
+        "&lon={prov_latlong[pnt_idx, lon]}&start={model_year}-01-01",
+        "&end={model_year}-12-31"
+      )
+      # Send query with header
+      meteo_response <- httr::GET(meteo_query, add_headers('x-api-key'=api_key))
+      # Wait between requests
+      Sys.sleep(0.55)
+      response_code <- httr::status_code(meteo_response)
+      if(response_code == 200){
+        # The query succeeded
+        response_dataset <- suppressWarnings(rbindlist(
+          content(meteo_response)$data, use.names = TRUE
+        ))
+        response_dataset[, location_code := this_prov_code ]
+        response_dataset[, point_id := pnt_idx ]
+        response_dataset$lat <- prov_latlong[pnt_idx, lat]
+        response_dataset$lon <- prov_latlong[pnt_idx, lon]
+
+        if(nrow(response_dataset)==1){
+          message("    W: No temperature data for province ",this_prov_code," in ",model_year)
+        } else {
+          temp_data_list[[year_idx]][[pnt_idx]] <- response_dataset
+        }
+
+      } else {
+        # The query failed
+        stop(
+          "API request failed with code ", response_code, " on year ",
+          model_year, " and location code ", this_prov_code
+        )
+      }
+    }
+  }
+
+  # Compile full dataset, save to file, and return
+  raw_data_full <- rbindlist(lapply(temp_data_list, rbindlist, fill=TRUE))
+  fwrite(raw_data_full, file = cache_file)
+  return(raw_data_full)
+}
+
+
+#' Prepare covariate: weekly temperature
+#'
+#' @description Covariate-specific prep function for average experienced weekly
+#'   temperature by province. Note that this function uses cacheing, so if the
+#'   raw data has been pulled from the API already it will not be re-pulled
+#'
+#' @param covar_fp Filepath to an API key for Meteostat, which will be used to
+#'   pull weekly templerature data
+#' @param model_years Vector of years to consider for modeling
+#' @param location_table Location code merge table for Italy
+#' @param pop_raster [optional] Population rasterBrick object, with one layer
+#'   per modeling year. Only used to prepare raster covariates, default NULL.
+#' @param polys_sf [optional] Polygon boundaries
+#''
+#' @return A list of two items:
+#'   - "prepped_covar": data.table containing the prepped covariate
+#'   - "covar_indices": Vector of identifiers that should be used to merge onto
+#'     the modeling dataset. The prepared covariate dataset should only include
+#'     identifier columns and the covariate value, specified by the covariate
+#'     name
+#'
+#' @import data.table fasterize glue httr raster
+#' @export
+ita_prepare_covar_temperature <- function(
+  covar_fp, model_years, location_table, pop_raster, polys_sf
+){
+
+  ## Find the pixel with the highest population in each province
+  ## The API will be queried at these points
+  prov_indexing <- index_populated_grid_cells(
+    pop = pop_raster[[length(model_years)]],
+    polys_sf = polys_sf,
+    loc_field = 'location_code'
+  )
+  prov_latlong <- prov_indexing[, .SD[frank(-pop) <= 3,], by=location_code
+    ][, pop := NULL
+    ][, `:=` (lat = round(lat, 3), lon = round(lon, 3))
+    ][order(location_code)]
+  if(nrow(prov_latlong) != nrow(location_table) * 3) stop("Missing some provinces")
+
+  # Query the Meteostat API for daily temperatures in selected locations
+  api_key <- readLines(covar_fp)
+  meteostat_folder <- file.path(dirname(api_key), 'meteostat')
+  dir.create(meteostat_folder, showWarnings = FALSE)
+  raw_temp_data <- ita_temperature_query_api(
+    model_years = model_years,
+    api_key = api_key,
+    prov_latlong = prov_latlong,
+    cache_file = file.path(meteostat_folder, 'api_data_compiled.csv'),
+    refresh_cache = FALSE
+  )
+
+  # Aggregate temperature from days to weeks
+  temp_weekly <- raw_temp_data[, date := as.Date(date, format = '%Y-%m-%d')
+    ][, year := as.integer(strftime(date, format='%Y'))
+    ][, week := as.integer(ceiling(as.numeric(strftime(date, format='%j'))/7))
+    ][ week > 52, week := 52
+    ][, .(tavg = mean(tavg, na.rm=T)), by=.(location_code, point_id, year, week)]
+
+  # Merge on a template to ensure that all points, weeks, and years are included
+  template <- merge(
+    x = data.table::data.table(
+      location_code = rep(location_table$location_code, each = 3),
+      point_id = 1:(3 * nrow(location_table)),
+      dummy = 1
+    ),
+    y = data.table::CJ(year = model_years, week = 1:52, dummy = 1),
+    by = 'dummy',
+    allow.cartesian = TRUE
+  )[, dummy := NULL ]
+  temp_weekly <- merge(
+    x = template, y = temp_weekly, by = names(template), all.x=TRUE
+  )[order(location_code, point_id, year, week)]
+  # Subset to only included weeks (up through 2020 week 26)
+  temp_weekly <- temp_weekly[(year < 2020) | (week <= 26), ]
+
+  # For small gaps (less than 4 weeks), linearly interpolate available data
+  num_na_start <- sum(is.na(temp_weekly$tavg))
+
+  temp_weekly[, allna := all(is.na(tavg)), by = point_id]
+  temp_weekly[
+    allna == FALSE,
+    temp_interp := stats::approx(x = .I, y=tavg, xout=.I, method='linear')$y,
+    by=point_id
+  ]
+  temp_weekly[, na_grouping := rleid(is.na(tavg)), by = point_id
+    ][, num_missing := .N, by = .(na_grouping, point_id)
+    ][is.na(tavg) & (num_missing < 4), tavg := temp_interp
+    ][, c('num_missing', 'temp_interp', 'na_grouping') := NULL ]
+  num_na_end <- sum(is.na(temp_weekly$tavg))
+
+  # Aggregate to the province level
+  temp_by_province <- temp_weekly[,
+    .(tavg = mean(tavg, na.rm=T)),
+    by=.(location_code, year, week)
+  ]
+
+  # When a weekly temperature is not available for a given province, pull it
+  #  from a neighboring province
+  reassign_dt <- rbindlist(lapply(list(
+    c(1,2), c(4,9), c(5,18), c(6,9), c(10,9), c(11,45), c(14,13), c(21,25),
+    c(22,25), c(29,28), c(33,19), c(34,19), c(35,20), c(36,20), c(37,39),
+    c(38,39), c(42,41), c(43,41), c(44,41), c(48,50), c(51,54), c(52,54),
+    c(55,54), c(57,54), c(64,62), c(65,63), c(66,69), c(67,69), c(68,69),
+    c(71,77), c(72,74), c(76,77), c(78,77), c(79,77), c(82,83), c(84,81),
+    c(85,81), c(88,87), c(91,90), c(95,111), c(98,18), c(100,47), c(101,80),
+    c(102,77), c(109,41), c(110,74)
+  ), as.list))
+  names(reassign_dt) <- c('target', 'source')
+  temp_by_province[ reassign_dt, source := i.source, on = c(location_code = 'target')
+    ][
+      temp_by_province,
+      tavg_neighbor := i.tavg,
+      on = c(source = 'location_code', week = 'week', year = 'year')
+    ][, from_neighbor := as.integer(is.na(tavg))
+    ][ from_neighbor == 1, tavg := tavg_neighbor
+    ][, c('source','tavg_neighbor','from_neighbor') := NULL ]
+
+  # Rename value column
+  setnames(temp_by_province, 'tavg', 'temperature')
+
+  # Return
+  return(list(
+    prepped_covar = temp_by_province,
+    covar_indices = c('location_code','year','week')
+  ))
+}
+
