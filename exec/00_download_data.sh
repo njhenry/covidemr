@@ -49,12 +49,5 @@ echo "***   - 2) Elevation ***" &&
 wget http://tinitaly.pi.ingv.it/AJK764GHJ0987NBV/TINITALY_image.zip -O italy_DEM.zip &&
 unzip italy_DEM.zip -d italy_DEM &&
 rm italy_DEM.zip &&
-echo "***   - 3) Average monthly temperature ***" &&
-wget https://crudata.uea.ac.uk/cru/data/hrg/cru_ts_4.04/cruts.2004151855.v4.04/tmp/cru_ts4.04.2011.2019.tmp.dat.gz &&
-gzip -d cru_ts4.04.2011.2019.tmp.dat.gz &&
-wget https://crudata.uea.ac.uk/cru/data/hrg/cru_ts_4.04/cruts.2004151855.v4.04/tmp/cru_ts4.04.2011.2019.tmp.dat.nc.gz &&
-gzip -d cru_ts4.04.2011.2019.tmp.dat.nc.gz &&
-wget https://crudata.uea.ac.uk/cru/data/hrg/cru_ts_4.04/cruts.2004151855.v4.04/tmp/cru_ts4.04.2011.2019.tmp.stn.gz &&
-gzip -d cru_ts4.04.2011.2019.tmp.stn.gz &&
 echo "" &&
 echo "================================ DONE ================================";
