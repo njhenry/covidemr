@@ -199,10 +199,12 @@ extend_covar_time_series <- function(covar_data, model_years){
 ita_prepare_covar_tfr <- function(covar_fp, model_years, location_table){
 
   covar_data <- ita_read_istat_csv(covar_fp)
-  setnames(covar_data, c('ITTER107','TIME','Value'), c('icode', 'year', 'tfr'))
+  data.table::setnames(
+    covar_data, c('ITTER107','TIME','Value'), c('icode', 'year', 'tfr')
+  )
 
   # Merge on location codes
-  covar_data_merged <- merge(
+  covar_data_merged <- data.table::merge(
     covar_data,
     location_table[, .(icode, location_code)],
     by='icode'
@@ -261,7 +263,7 @@ ita_prepare_covar_unemp <- function(covar_fp, model_years, location_table){
   # Fix Bolzano and Trento location codes, then merge on standard code table
   covar_data[ icode == 'ITD1', icode := 'ITD10' ] # Bolzano
   covar_data[ icode == 'ITD2', icode := 'ITD20' ] # Trento
-  covar_data_merged <- merge(
+  covar_data_merged <- data.table::merge(
     covar_data,
     location_table[, .(location_code, icode)],
     by='icode'
@@ -319,7 +321,7 @@ ita_prepare_covar_socserv <- function(covar_fp, model_years, location_table){
   covar_data <- rbindlist(list(covar_data, covar_ssd), use.names=TRUE, fill=TRUE)
 
   # Merge on location codes
-  covar_data_merged <- merge(
+  covar_data_merged <- data.table::merge(
     covar_data,
     location_table[, .(icode, location_code)],
     by='icode'
@@ -483,6 +485,8 @@ ita_prepare_covar_hc_access <- function(
 #' @return Data.table containing full Meteostat daily API data as well as
 #'  location code for all available years
 #'
+#' @import data.table glue httr
+#'
 ita_temperature_query_api <- function(
   model_years, api_key, prov_latlong, cache_file, refresh_cache = FALSE
 ){
@@ -517,8 +521,8 @@ ita_temperature_query_api <- function(
       response_code <- httr::status_code(meteo_response)
       if(response_code == 200){
         # The query succeeded
-        response_dataset <- suppressWarnings(rbindlist(
-          content(meteo_response)$data, use.names = TRUE
+        response_dataset <- suppressWarnings(data.table::rbindlist(
+          httr::content(meteo_response)$data, use.names = TRUE
         ))
         response_dataset[, location_code := this_prov_code ]
         response_dataset[, point_id := pnt_idx ]
@@ -542,7 +546,9 @@ ita_temperature_query_api <- function(
   }
 
   # Compile full dataset, save to file, and return
-  raw_data_full <- rbindlist(lapply(temp_data_list, rbindlist, fill=TRUE))
+  raw_data_full <- data.table::rbindlist(
+    lapply(temp_data_list, rbindlist, fill=TRUE)
+  )
   fwrite(raw_data_full, file = cache_file)
   return(raw_data_full)
 }
@@ -569,12 +575,11 @@ ita_temperature_query_api <- function(
 #'     identifier columns and the covariate value, specified by the covariate
 #'     name
 #'
-#' @import data.table fasterize glue httr raster
+#' @import data.table raster
 #' @export
 ita_prepare_covar_temperature <- function(
   covar_fp, model_years, location_table, pop_raster, polys_sf
 ){
-
   ## Find the pixel with the highest population in each province
   ## The API will be queried at these points
   prov_indexing <- index_populated_grid_cells(
@@ -608,7 +613,7 @@ ita_prepare_covar_temperature <- function(
     ][, .(tavg = mean(tavg, na.rm=T)), by=.(location_code, point_id, year, week)]
 
   # Merge on a template to ensure that all points, weeks, and years are included
-  template <- merge(
+  template <- data.table::merge(
     x = data.table::data.table(
       location_code = rep(location_table$location_code, each = 3),
       point_id = 1:(3 * nrow(location_table)),
@@ -618,7 +623,7 @@ ita_prepare_covar_temperature <- function(
     by = 'dummy',
     allow.cartesian = TRUE
   )[, dummy := NULL ]
-  temp_weekly <- merge(
+  temp_weekly <- data.table::merge(
     x = template, y = temp_weekly, by = names(template), all.x=TRUE
   )[order(location_code, point_id, year, week)]
   # Subset to only included weeks (up through 2020 week 26)
@@ -633,9 +638,9 @@ ita_prepare_covar_temperature <- function(
     temp_interp := stats::approx(x = .I, y=tavg, xout=.I, method='linear')$y,
     by=point_id
   ]
-  temp_weekly[, na_grouping := rleid(is.na(tavg)), by = point_id
+  temp_weekly[, na_grouping := data.table::rleid(is.na(tavg)), by = point_id
     ][, num_missing := .N, by = .(na_grouping, point_id)
-    ][is.na(tavg) & (num_missing < 4), tavg := temp_interp
+    ][ is.na(tavg) & (num_missing < 4), tavg := temp_interp
     ][, c('num_missing', 'temp_interp', 'na_grouping') := NULL ]
   num_na_end <- sum(is.na(temp_weekly$tavg))
 
@@ -647,7 +652,7 @@ ita_prepare_covar_temperature <- function(
 
   # When a weekly temperature is not available for a given province, pull it
   #  from a neighboring province
-  reassign_dt <- rbindlist(lapply(list(
+  reassign_dt <- data.table::rbindlist(lapply(list(
     c(1,2), c(4,9), c(5,18), c(6,9), c(10,9), c(11,45), c(14,13), c(21,25),
     c(22,25), c(29,28), c(33,19), c(34,19), c(35,20), c(36,20), c(37,39),
     c(38,39), c(42,41), c(43,41), c(44,41), c(48,50), c(51,54), c(52,54),
@@ -667,7 +672,7 @@ ita_prepare_covar_temperature <- function(
     ][, c('source','tavg_neighbor','from_neighbor') := NULL ]
 
   # Rename value column
-  setnames(temp_by_province, 'tavg', 'temperature')
+  data.table::setnames(temp_by_province, 'tavg', 'temperature')
 
   # Return
   return(list(
