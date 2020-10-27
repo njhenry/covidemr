@@ -1,9 +1,9 @@
 ## -----------------------------------------------------------------------------
-## 
+##
 ## 00: Create standard list of Provinces
-## 
+##
 ## For more details, see README at https://github.com/njhenry/covidemr/
-## 
+##
 ## -----------------------------------------------------------------------------
 
 ## Load packages
@@ -11,12 +11,12 @@
 library(data.table)
 
 # DEVELOPMENT: load package functions and config
-dev_fp <- '/ihme/code/covid-19/user/nathenry/covidemr/'
+dev_fp <- '~/repos/covidemr/'
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
-## DEVELOPMENT: set globals
-## TODO: Convert to command line argument
-prepped_data_version <- '20200917'
+## TODO: Load using command line argument
+prepped_data_version <- '20201026'
+
 
 ## Create standard location list
 
@@ -47,7 +47,7 @@ pop_sub <- pop_sub[!(icode %in% old_provs), ]
 
 # Merge tables to add code
 prov_table_full <- merge(prov_table, pop_sub, by='location_name', all=TRUE)
-if(nrow(prov_table_full) != 107)) stop("ISSUE: Wrong number of provinces!")
+if(nrow(prov_table_full) != 107) stop("ISSUE: Wrong number of provinces!")
 prov_table_full <- prov_table_full[order(location_code)]
 
 ## Create output directory and save
