@@ -44,8 +44,6 @@ vignettes/*.pdf
 
 # pkgdown site
 docs/
-/man/*.Rd
-/man/*.rd
 
 # translation temp files
 po/*~
