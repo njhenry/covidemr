@@ -1,9 +1,9 @@
 ## -----------------------------------------------------------------------------
-## 
+##
 ## 02: Data Preparation Code for Italy ISTAT deaths, population, and covariates
-## 
+##
 ## For more details, see README at https://github.com/njhenry/covidemr/
-## 
+##
 ## -----------------------------------------------------------------------------
 
 ## Load required packages and inputs
@@ -13,72 +13,99 @@ library(data.table)
 library(sp)
 library(sf)
 # DEVELOPMENT: rebuild library
-dev_fp <- '/ihme/code/covid-19/user/nathenry/covidemr/'
+dev_fp <- '~/repos/covidemr/'
 devtools::load_all(dev_fp)
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## TODO: Load using command line argument
-prepped_data_version <- '20200917'
+prepped_data_version <- '20201026'
+
+# Helper function to create a filepath for a particular prepped data object
+get_prep_fp <- function(file_type){
+  return(file.path(
+    config$paths$prepped_data,
+    prepped_data_version,
+    config$prepped_data_files[[file_type]]
+  ))
+}
 
 # Load prepared location table
-prepped_data_dir <- file.path(config$paths$prepped_data, prepped_data_version)
-location_table <- data.table::fread(file.path(
-  prepped_data_dir, config$prepped_data_files$location_table
-))
+location_table <- data.table::fread(get_prep_fp('location_table'))
 
 # Get age groups
 age_groups <- create_age_groups(config$age_cutoffs)
 
-# Define a convenience function for loading CSVs
-ita_fread <- function(fp){
-  fread(fp, encoding=config$encoding, na.strings=c("","NA","n.d."))
-}
-
 
 ## Load and format deaths data -------------------------------------------------
 
-deaths_raw <- ita_fread(config$paths$raw_deaths)
-
-deaths_prepped <- ita_prepare_deaths(
-  deaths_raw,
+deaths_raw <- covidemr::ita_read_istat_csv(config$paths$raw_deaths)
+deaths_prepped <- covidemr::ita_prepare_deaths_all_years(
+  deaths_raw = deaths_raw,
   age_cutoffs = config$age_cutoffs,
   model_years = config$model_years,
   first_covid_death_date = as.Date(config$first_death_date)
 )
+
 # Save prepared deaths data to file
-write.csv(
-  deaths_prepped,
-  file = file.path(prepped_data_dir, config$prepped_data_files$deaths),
-  row.names = FALSE
-)
+data.table::fwrite(deaths_prepped, file = get_prep_fp('deaths'))
+rm(deaths_raw)
 
 
 ## Load and format population data ---------------------------------------------
 
-pop_raw <- ita_fread(config$path$raw_pop)
+pop_raw <- covidemr::ita_read_istat_csv(config$path$raw_pop)
+pop_prepped <- covidemr::ita_prepare_pop(pop_raw, age_cutoffs=config$age_cutoffs)
 
-pop_prepped <- ita_prepare_pop(pop_raw, age_cutoffs=config$age_cutoffs)
+data.table::fwrite(pop_prepped, file = get_prep_fp('population'))
 
-write.csv(
-  pop_prepped,
-  file = file.path(prepped_data_dir, config$prepped_data_files$population),
-  row.names = FALSE
+
+## Load spatial data: polygons, adjacency matrix, population raster ------------
+
+polys_list <- covidemr::load_format_spatial_polys(
+  shp_in_fp = config$paths$shp_generalized,
+  abbrev_field = 'SIGLA',
+  location_table = location_table
 )
+# Create adjacency matrix
+# Add manual adjacencies for islands:
+#   - Messina, Sicilia (83) <-> Reggio Calabria, mainland (80) - proximity
+#   - Cagliari, Sardinia (92) <-> Roma, mainland (58) - most common flights/ferries
+adjmat <- covidemr::build_adjacency_matrix(
+  poly_sp = polys_list$shp_sp,
+  allow_zero_neighbors = FALSE,
+  manually_add_links = list(c(83, 80), c(92, 58))
+)
+
+# Load and format population raster
+pop_raster <- covidemr::load_format_pop_raster(
+  pop_fp_format = config$paths$pop_raster_layers,
+  model_years = config$model_years,
+  country_polys = polys_list$shp_sf,
+  projection = config$projection
+)
+
+# Save to file
+saveRDS(polys_list$shp_sf, file = get_prep_fp('shapefile_sf'))
+saveRDS(polys_list$shp_sp, file = get_prep_fp('shapefile_sp'))
+saveRDS(adjmat, file = get_prep_fp('adjacency_matrix'))
+raster::writeRaster(pop_raster, file = get_prep_fp('pop_raster'), overwrite=TRUE)
 
 
 ## Load and format covariates --------------------------------------------------
 
-covars_raw <- lapply(config$paths$raw_covars, ita_fread)
-covar_names <- names(config$paths$raw_covars)
-names(covars_raw) <- covar_names
+covar_fps <- config$paths$raw_covars
+covar_names <- names(covar_fps)
 
-# Prepare
+# Prepare each covariate separately using a standard function interface
 covars_prepped <- lapply(covar_names, function(covar_name){
-  ita_prepare_covariate(
-    copy(covars_raw[[covar_name]]),
-    covar_name,
+  covidemr::ita_prepare_covariate(
+    covar_name = covar_name,
+    covar_fp = covar_fps[[covar_name]],
     model_years = config$model_years,
-    location_table = location_table
+    location_table = data.table::copy(location_table),
+    pop_raster = pop_raster,
+    polys_sf = polys_list$shp_sf,
+    projection = config$projection
   )
 })
 names(covars_prepped) <- covar_names
@@ -127,11 +154,7 @@ for(covar_name in covar_names){
 }
 
 # Save out
-write.csv(
-  template_dt,
-  file = file.path(prepped_data_dir, config$prepped_data_files$template),
-  row.names = FALSE
-)
+write.csv(template_dt, file = get_prep_fp('template'), row.names = FALSE)
 
 
 ## Merge deaths and population onto the template to get full input dataset -----
@@ -154,45 +177,6 @@ if(nrow(in_data[is.na(deaths)])/nrow(in_data) > .2){
 in_data[is.na(deaths), `:=` (deaths=0, observed_days=7)]
 
 # Save to file
-write.csv(
-  in_data,
-  file = file.path(prepped_data_dir, config$prepped_data_files$full_data),
-  row.names = FALSE
-)
-
-
-## Load shapefile, create adjacency matrix, and cache both ---------------------
-
-shp_sf <- sf::st_read(config$paths$shp_generalized)
-# Order by location code
-shp_sf$location_code <- sapply(
-  shp_sf$SIGLA, 
-  function(SIG) location_table[abbrev==SIG, location_code]
-)
-shp_sf <- shp_sf[order(shp_sf$location_code), ]
-
-# Create SP version
-shp_sp <- as(shp_sf, "Spatial")
-# Reset polygon IDs to reduce confusion
-for(ii in 1:nrow(shp_sp@data)){
-  shp_sp@polygons[[ii]]@ID <- as.character(shp_sp@data[[ii, 'location_code']])
-}
-
-# Create adjacency matrix
-adjmat <- build_adjacency_matrix(shp_sp)
-
-# Add manual adjacencies for islands:
-#   - Messina, Sicilia (83) <-> Reggio Calabria, mainland (80) - proximity
-#   - Cagliari, Sardinia (92) <-> Roma, mainland (58) - most common flights/ferries
-add_links <- list(c(83, 80), c(92, 58))
-for(add_link in add_links){
-  adjmat[add_link[1], add_link[2]] <- 1
-  adjmat[add_link[2], add_link[1]] <- 1
-}
-
-# Save to file
-saveRDS(shp_sf, file=file.path(prepped_data_dir, config$prepped_data_files$shapefile_sf))
-saveRDS(shp_sp, file=file.path(prepped_data_dir, config$prepped_data_files$shapefile_sp))
-saveRDS(adjmat, file=file.path(prepped_data_dir, config$prepped_data_files$adjacency_matrix))
+write.csv(in_data, file = get_prep_fp('full_data'), row.names = FALSE)
 
 message("** Data prep complete. **")
