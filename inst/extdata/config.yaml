@@ -1,18 +1,28 @@
 paths:
-  raw_pop_dir: '/ihme/homes/nathenry/ita_emr/pop/pop_all_by_province.csv'
-  raw_deaths: '/ihme/homes/nathenry/ita_emr/deaths/comuni_giornaliero_30giugno.csv'
+  raw_pop_dir: '~/temp_data/ita_emr/raw_data/20201026/pop_all_by_province.csv'
+  pop_raster_layers: '~/temp_data/ita_emr/raw_data/20201026/pop_raster/ita_{year}.tif'
+  raw_deaths: '~/temp_data/ita_emr/raw_data/20201026/deaths/comuni_giornaliero_30giugno.csv'
   raw_covars:
-    tfr: '/ihme/homes/nathenry/ita_emr/covars/COVAR_tfr_2015_2018_province.csv'
-    unemp: '/ihme/homes/nathenry/ita_emr/covars/COVAR_unemployment_2015_2019_province.csv'
-    socserv: '/ihme/homes/nathenry/ita_emr/covars/COVAR_social_services_2015_2017_province.csv'
-  prepped_data: '/ihme/homes/nathenry/ita_emr/prepped_data'
-  model_results: '/ihme/homes/nathenry/ita_emr/model_results'
-  shp_detailed: '/ihme/homes/nathenry/ita_emr/shp/Limiti01012020/ProvCM01012020/ProvCM01012020_WGS84.shp'
-  shp_generalized: '/ihme/homes/nathenry/ita_emr/shp/Limiti01012020_g/ProvCM01012020_g/ProvCM01012020_g_WGS84.shp'
-  tmb_template: '/ihme/code/covid-19/users/nathenry/covidemr/src/mort_stwa.cpp'
+    tfr: '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_tfr_2015_2018_province.csv'
+    unemp: '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_unemployment_2015_2019_province.csv'
+    socserv: '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_social_services_2015_2017_province.csv'
+    tax_brackets: '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_income_categories_by_muni_2015_2018.csv'
+    hc_access: '~/temp_data/ita_emr/raw_data/20201026/covars/raw/healthcare_access.tif'
+    # elevation: '~/temp_data/ita_emr/raw_data/20201026/covars/raw/italy_DEM/Italia_tinitaly.jpg'
+    # temperature: '~/temp_data/ita_emr/raw_data/20201026/covars/raw/cru_ts4.04.2011.2019.tmp.dat.nc'
+    temperature: '~/temp_data/ita_emr/raw_data/20201026/covars/meteostat_api_key.txt' # From dev.meteostat.net
+    # tax_income: [
+    #   '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_income_totals_by_muni_2015_2018.csv',
+    #   '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_income_categories_by_muni_2015_2018.csv'
+    # ]
+  shp_detailed: '~/temp_data/ita_emr/raw_data/20201026/shp/Limiti01012020/ProvCM01012020/ProvCM01012020_WGS84.shp'
+  shp_generalized: '~/temp_data/ita_emr/raw_data/20201026/shp/Limiti01012020_g/ProvCM01012020_g/ProvCM01012020_g_WGS84.shp'
+  prepped_data: '~/temp_data/ita_emr/prepped_data'
+  model_results: '~/temp_data/ita_emr/model_results'
 prepped_data_files:
   location_table: 'location_table.csv'
   population: 'prepped_pop.csv'
+  pop_raster: 'pop_raster.tif'
   deaths: 'prepped_deaths.csv'
   full_data: 'prepped_data_full.csv'
   template: 'model_template.csv'
@@ -32,8 +42,9 @@ results_files:
   excess_summary: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_excess_summary.csv'
 model_years: [2015, 2016, 2017, 2018, 2019, 2020]
 age_cutoffs: [0, 15, 45, 65]
-model_week_range: [1, 27]
+model_week_range: [1, 52]
 num_draws: 1000
+projection: "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs"
 first_death_date: '2020-03-01' # In YYYY-MM-DD format
 pop_identifiers: ['age_group_code','sex','year','location_code']
 death_identifiers: ['age_group_code','sex','year','week','location_code']
