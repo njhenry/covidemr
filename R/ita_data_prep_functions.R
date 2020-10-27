@@ -28,19 +28,30 @@ create_age_groups <- function(age_cutoffs = seq(0, 100, by=20)){
 }
 
 
-#' Prepare death data for Italy
+#' Read CSV downloaded from iStat
 #'
-#' @description Given raw data all-cause mortality by age, sex, date, and
-#'   province in Italy, prepare the data using standard identifiers and grouped
-#'   by year and week. This is a convenience function designed specifically to
-#'   work with data downloaded from Istat. For more information, see the
-#'   repository README.
+#' @description Read a CSV downloaded from iStat, the Italian Statistical
+#'   Agency, as an R data.table
+#'
+#' @param fp [char] The filepath of the input file to read
+#'
+#' @return A data.table representation of the CSV, with NAs appropriately placed
+#'
+#' @import data.table
+#' @export
+ita_read_istat_csv <- function(fp){
+  data.table::fread(fp, na.strings=c("","NA","n.d."))
+}
+
+#' Prepare a single year of death data for Italy
+#'
+#' @description Prepare a single year of death data for Italy. This function is
+#'   wrapped by `ita_prepare_deaths_all_years()`.
 #'
 #' @param deaths_raw Data.table downloaded from IStat
 #' @param age_cutoffs Vector of the starting years for each age group bin. For
 #'   more information, see \link{\code{create_age_groups}}
-#' @param model_years Vector of years to be included in the mortality model, up
-#'   to and including the current year
+#' @param this_year Year to be extracted
 #' @param first_covid_death_date R Date object designating the date of the first
 #'   confirmed COVID death in Italy.
 #'
@@ -48,12 +59,18 @@ create_age_groups <- function(age_cutoffs = seq(0, 100, by=20)){
 #'
 #' @import data.table
 #' @export
-ita_prepare_deaths <- function(
-  deaths_raw, age_cutoffs, model_years, first_covid_death_date
+ita_prepare_deaths_single_year <- function(
+  deaths_raw, age_cutoffs, this_year, first_covid_death_date
 ){
+  # Check data validity
+  if(length(this_year) != 1) stop(
+    "Parameter this_year should take a single value. To prepare multiple years",
+    "of data, use the wrapper function ita_prepare_deaths_all_years()."
+  )
+
   # Keep only required columns and reshape long
   id_cols <- c('PROV','CL_ETA','GE')
-  val_cols <- c(outer(c('M_', 'F_'), model_years - 2000, FUN='paste0'))
+  val_cols <- paste0(c("M_", "F_"), this_year - 2000)
   deaths_long <- data.table::melt(
     deaths_raw,
     id.vars = id_cols,
@@ -79,7 +96,7 @@ ita_prepare_deaths <- function(
   # Add sexes and years
   deaths_long[, sex := 'male']
   deaths_long[ startsWith(sex_yr, 'F'), sex := 'female']
-  deaths_long[, year := as.integer(substr(sex_yr, 3, 4)) + 2000 ]
+  deaths_long[, year := this_year ]
   # Add month and day, then convert to week ID
   deaths_long[, month := as.integer(substr(day_id, 1, 2))]
   deaths_long[, day := as.integer(substr(day_id, 3, 4)) ]
@@ -96,19 +113,19 @@ ita_prepare_deaths <- function(
   deaths_long[, in_baseline := as.integer(date_full < first_covid_death_date) ]
 
   # Aggregate deaths across all other groups
-  deaths_agg <- deaths_long[,
-                            .(deaths=sum(deaths)),
-                            by=.(location_code, year, week, sex, age_group_code, in_baseline)
-                            ][order(location_code, year, week, sex, age_group_code, in_baseline)]
+  deaths_agg <- deaths_long[
+    , .(deaths=sum(deaths)),
+    by=.(location_code, year, week, sex, age_group_code, in_baseline)
+  ][order(location_code, year, week, sex, age_group_code, in_baseline)]
 
   # Get days in week for each grouping
   days_in_week <- data.table(date_full = seq(
-    as.Date(paste0(min(model_years),'-01-01')),
-    as.Date(paste0(max(model_years),'-12-31')),
+    as.Date(paste0(this_year,'-01-01')),
+    as.Date(paste0(this_year,'-12-31')),
     by='1 day'
   ))
   days_in_week <- days_in_week[ date_full <= max(na.omit(deaths_long$date_full)), ]
-  days_in_week[, year := as.integer(strftime(date_full, format='%Y'))]
+  days_in_week[, year := this_year ]
   days_in_week[, week := as.integer(ceiling(as.numeric(strftime(date_full, format='%j') ) / 7))]
   days_in_week[ week > 52, week := 52]
   days_in_week[, in_baseline := as.integer(date_full < first_covid_death_date) ]
@@ -123,6 +140,49 @@ ita_prepare_deaths <- function(
 
   return(deaths_agg)
 }
+
+
+#' Prepare death data for Italy
+#'
+#' @description Given raw data all-cause mortality by age, sex, date, and
+#'   province in Italy, prepare the data using standard identifiers and grouped
+#'   by year and week. This function is designed specifically to work with data
+#'   downloaded from Istat. This is a wrapper for the function
+#'   `ita_prepare_deaths_single_year()`. For more information, see the
+#'   repository README.
+#'
+#' @param deaths_raw Data.table downloaded from IStat
+#' @param age_cutoffs Vector of the starting years for each age group bin. For
+#'   more information, see \link{\code{create_age_groups}}
+#' @param model_years Vector of years to be included in the mortality model, up
+#'   to and including the current year
+#' @param first_covid_death_date R Date object designating the date of the first
+#'   confirmed COVID death in Italy.
+#'
+#' @return Data.table of formatted death data
+#'
+#' @import data.table
+#' @export
+ita_prepare_deaths_all_years <- function(
+  deaths_raw, age_cutoffs, model_years, first_covid_death_date
+){
+  # Iteratively prepare deaths to reduce memory use
+  deaths_prepped_list <- vector('list', length = length(model_years))
+
+  for(year_idx in 1:length(model_years)){
+    this_year <- model_years[year_idx]
+    message("Preparing deaths for year ", this_year)
+    deaths_prepped_list[[year_idx]] <- ita_prepare_deaths_single_year(
+      deaths_raw = deaths_raw,
+      age_cutoffs = age_cutoffs,
+      this_year = this_year,
+      first_covid_death_date = first_covid_death_date
+    )
+  }
+
+  deaths_prepped <- rbindlist(deaths_prepped_list)
+  return(deaths_prepped)
+ }
 
 
 #' Prepare population data for Italy
