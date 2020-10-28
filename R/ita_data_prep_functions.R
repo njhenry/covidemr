@@ -290,3 +290,44 @@ backfill_input_data <- function(input_data, index_field, check_vals){
   filled_data <- rbindlist(concat_list)[order(year)]
   return(filled_data)
 }
+
+
+#' Create template data.table to store all observed data
+#'
+#' @description Create a data table containing all location-age-sex-year-week
+#'   groups that will be estimated in the model. This template can then be
+#'   left-joined to death, population, and covariate data.
+#'
+#' @param model_years Vector of years to be modeled
+#' @param model_week_range Vector of weeks IDs (1-52) to include in the model
+#' @param location_table Table with `location_code`s for all locations to be
+#'   modeled
+#' @param age_groups Age group index, created by `create_age_groups()`
+#'
+#' @return Template data.table containing all combinations of these indexes
+#'
+#' @import data.table
+#' @export
+create_template_dt <- function(
+  model_years, model_week_range, location_table, age_groups
+){
+  # Create indices for age, sex, year, and week
+  sex_index <- data.table(sex = c('male','female'))[, idx_sex := .I - 1 ]
+  years_index <- data.table(year = sort(model_years))[, idx_year := .I - 1 ]
+  week_dt <- data.table(
+    week = min(model_week_range):max(model_week_range)
+  )[, idx_week := .I - 1 ]
+  age_groups[, idx_age := .I - 1 ]
+
+  # Full template dataset contains sex, location, year, week, age
+  # idx_<index> is a zero-indexed code for each ID column
+  template_dt <- location_table[order(location_code)
+    ][, `:=` (c_j = 1, idx_loc = .I - 1)
+    ][ sex_index[, c_j := 1], on='c_j', allow.cartesian=TRUE
+    ][ age_groups[, c_j := 1], on='c_j', allow.cartesian=TRUE
+    ][ years_index[, c_j := 1], on='c_j', allow.cartesian=TRUE
+    ][ week_dt[, c_j := 1], on='c_j', allow.cartesian=TRUE
+    ][, c_j := NULL ]
+
+  return(template_dt)
+}
