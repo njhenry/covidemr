@@ -204,7 +204,7 @@ ita_prepare_covar_tfr <- function(covar_fp, model_years, location_table){
   )
 
   # Merge on location codes
-  covar_data_merged <- data.table::merge(
+  covar_data_merged <- data.table::merge.data.table(
     covar_data,
     location_table[, .(icode, location_code)],
     by='icode'
@@ -263,7 +263,7 @@ ita_prepare_covar_unemp <- function(covar_fp, model_years, location_table){
   # Fix Bolzano and Trento location codes, then merge on standard code table
   covar_data[ icode == 'ITD1', icode := 'ITD10' ] # Bolzano
   covar_data[ icode == 'ITD2', icode := 'ITD20' ] # Trento
-  covar_data_merged <- data.table::merge(
+  covar_data_merged <- data.table::merge.data.table(
     covar_data,
     location_table[, .(location_code, icode)],
     by='icode'
@@ -321,7 +321,7 @@ ita_prepare_covar_socserv <- function(covar_fp, model_years, location_table){
   covar_data <- rbindlist(list(covar_data, covar_ssd), use.names=TRUE, fill=TRUE)
 
   # Merge on location codes
-  covar_data_merged <- data.table::merge(
+  covar_data_merged <- data.table::merge.data.table(
     covar_data,
     location_table[, .(icode, location_code)],
     by='icode'
@@ -391,10 +391,175 @@ ita_prepare_covar_tax_brackets <- function(
   ]
   # Extend for 2019-2020 and return
   prepped_covar <- extend_covar_time_series(
-    covar_data = covar_prepped,
+    covar_data = prepped_covar,
     model_years = model_years
   )
   return(list(prepped_covar = prepped_covar, covar_indices = covar_indices))
+}
+
+#' Prepare covariate: mean taxable income across all households
+#'
+#' @description Covariate-specific prep function for average taxable income
+#'   across all households in a province. This covariate is derived from two
+#'   IStat datasets, one listing the number of households per tax bracket and
+#'   another listing total taxed income by bracket. A related presentation of
+#'   this data is proportion of households with less than 10k Euros in taxable
+#'   income, prepared in the function `ita_prepare_covar_tax_brackets()`.
+#'
+#' @param covar_fp Filepath to the raw covariate
+#' @param model_years Vector of years to consider for modeling
+#' @param location_table Location code merge table for Italy
+#'
+#' @return data.table containing prepared covariate data and vector of indices
+#'
+#' @import data.table
+#' @export
+ita_prepare_covar_tax_income <- function(
+  covar_fp, model_years, location_table
+){
+  # Load data
+  covar_indices <- c('year', 'location_code')
+  covar_data_long <- rbindlist(
+    lapply(covar_fp, ita_read_istat_csv)
+  )[, .(ITTER107, Territory, TIPO_DATO_MEF, TIME, Value)]
+  # Cast so that total income and number of households are in different fields
+  covar_data <- data.table::dcast(
+    covar_data_long,
+    ITTER107 + Territory + TIME ~ TIPO_DATO_MEF,
+    fun.aggregate = function(x) sum(x, na.rm=T),
+    value.var = 'Value'
+  )
+  setnames(covar_data, c('TIME','AGGINCF','AGGINCR'), c('year','hh','income'))
+
+  # Set the province code based on the comuna code
+  covar_data[, ITTER107 := as.character(ITTER107)]
+  covar_data[, loc_nc := nchar(ITTER107) ]
+  covar_data[, location_code := as.integer(substr(ITTER107, 1, loc_nc - 3))]
+
+  # Some provinces in Sardinia were reorganized in 2018: try to reassign the
+  #  provinces for those municipalities based on 2018 data
+  sard_provinces <- location_table[region_code == 20, location_code ]
+  sard_merge_table <- unique(covar_data[
+    (year == 2018) & (location_code %in% sard_provinces),
+    .(Territory, location_code)
+  ])
+
+  old_provs <- 104:107
+  existing_provinces <- covar_data[ !(location_code %in% old_provs), ]
+  sard_pre_2018 <- covar_data[location_code %in% old_provs,]
+  sard_pre_2018[
+    sard_merge_table, on='Territory', location_code := i.location_code
+  ]
+  # Reconstitute the full dataset with updated province codes
+  covar_data <- rbindlist(list(existing_provinces, sard_pre_2018), use.names=TRUE)
+
+  # Get the number of households with income less than 15k Euros
+  prepped_covar <- covar_data[,
+    .(tax_income = sum(income) / sum(hh)),
+    by = covar_indices
+  ]
+  # Extend for 2019-2020 and return
+  prepped_covar <- extend_covar_time_series(
+    covar_data = prepped_covar,
+    model_years = model_years
+  )
+  return(list(prepped_covar = prepped_covar, covar_indices = covar_indices))
+}
+
+
+#' Prepare covariate: population density
+#'
+#' @description Covariate-specific prep function for all-ages population density
+#'   by Italian province
+#'
+#' @param covar_fp Filepath to the raw covariate
+#' @param model_years Vector of years to consider for modeling
+#' @param location_table Location code merge table for Italy
+#' @param polys_sf [optional] Polygon boundaries
+#'
+#' @return A list of two items:
+#'   - "prepped_covar": data.table containing the prepped covariate
+#'   - "covar_indices": Vector of identifiers that should be used to merge onto
+#'     the modeling dataset. The prepared covariate dataset should only include
+#'     identifier columns and the covariate value, specified by the covariate
+#'     name
+#'
+#' @import data.table sf
+#' @export
+ita_prepare_covar_pop_density <- function(
+  covar_fp, model_years, location_table, polys_sf
+){
+  # Load annual population data
+  pop_by_age <- data.table::fread(covar_fp)
+  pop_agg <- pop_by_age[, .(pop = sum(pop)), by=.(location_code, year)]
+  pop_agg <- pop_agg[order(location_code, year)]
+
+  # Generate areas for each location based on the projected polygons
+  loc_areas <- data.table::data.table(
+    location_code = polys_sf$location_code,
+    area_sqkm = as.vector(sf::st_area(polys_sf) / 1E6) # Coming from units in m
+  )
+  pop_agg[ loc_areas, area_sqkm := as.numeric(i.area_sqkm), on = 'location_code'
+    ][, pop_density := pop / area_sqkm # Units: people / km2
+    ][, c('pop','area_sqkm') := NULL ]
+
+  return(list(
+    prepped_covar = pop_agg,
+    covar_indices = c('location_code','year')
+  ))
+}
+
+
+#' Prepare covariate: Elevation
+#'
+#' @description Covariate-specific prep function for elevation by location.
+#'   Specifically, this aggregated covariate represents the population-weighted
+#'   mean elevation inhabited by residents of each province.
+#'
+#' @param covar_fp Filepath to the raw covariate
+#' @param pop_raster [optional] Population rasterBrick object, with one layer
+#'   per modeling year. Only used to prepare raster covariates, default NULL.
+#' @param polys_sf [optional] Polygon boundaries
+#' @param projection [optional] Character vector giving the proj4 CRS
+#'   definition. Example: "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs"
+#'
+#' @return A list of two items:
+#'   - "prepped_covar": data.table containing the prepped covariate
+#'   - "covar_indices": Vector of identifiers that should be used to merge onto
+#'     the modeling dataset. The prepared covariate dataset should only include
+#'     identifier columns and the covariate value, specified by the covariate
+#'     name
+#'
+#' @import data.table raster fasterize
+#' @export
+ita_prepare_covar_elevation <- function(
+  covar_fp, pop_raster, polys_sf, projection
+){
+  # Load raw data
+  elev_raw <- raster::raster(covar_fp)
+  # Get population in final year (mean elevation should be stable across years)
+  pop <- pop_raster[[dim(pop_raster)[3]]]
+
+  # Align with population raster and mask
+  elev_projected <- raster::projectRaster(from = elev_raw, crs = projection)
+  elev_sub <- raster::crop(x = elev_projected, y = pop)
+  elev_sub <- raster::resample(x = elev_sub, y = pop, method = 'bilinear')
+  elev_sub <- raster::mask(x = elev_sub, mask = pop)
+
+  locs_raster <- fasterize::fasterize(
+    sf = polys_sf, raster = pop, field = 'location_code', fun = 'last'
+  )
+  # If all dimensions align, run the population-weighted aggregation
+  if(any(dim(elev_sub) != dim(pop))) stop("Access raster not aligned")
+  if(any(dim(pop) != dim(locs_raster))) stop("Location raster not aligned")
+  prepped_covar <- na.omit(data.table::data.table(
+    elevation = as.vector(elev_sub),
+    population = as.vector(pop),
+    location_code = as.vector(locs_raster)
+  ))[, .(elevation = weighted.mean(elevation, w=population)), by=location_code]
+  prepped_covar <- prepped_covar[order(location_code)]
+
+  return(list(prepped_covar = prepped_covar, covar_indices = 'location_code'))
 }
 
 
@@ -613,7 +778,7 @@ ita_prepare_covar_temperature <- function(
     ][, .(tavg = mean(tavg, na.rm=T)), by=.(location_code, point_id, year, week)]
 
   # Merge on a template to ensure that all points, weeks, and years are included
-  template <- data.table::merge(
+  template <- data.table::merge.data.table(
     x = data.table::data.table(
       location_code = rep(location_table$location_code, each = 3),
       point_id = 1:(3 * nrow(location_table)),
@@ -623,7 +788,7 @@ ita_prepare_covar_temperature <- function(
     by = 'dummy',
     allow.cartesian = TRUE
   )[, dummy := NULL ]
-  temp_weekly <- data.table::merge(
+  temp_weekly <- data.table::merge.data.table(
     x = template, y = temp_weekly, by = names(template), all.x=TRUE
   )[order(location_code, point_id, year, week)]
   # Subset to only included weeks (up through 2020 week 26)
