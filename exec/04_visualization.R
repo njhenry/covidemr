@@ -1,9 +1,9 @@
 ## -----------------------------------------------------------------------------
-## 
+##
 ## 04: Data and model visualization script
-## 
+##
 ## For more details, see README at https://github.com/njhenry/covidemr/
-## 
+##
 ## -----------------------------------------------------------------------------
 
 library(data.table)
@@ -12,14 +12,14 @@ library(glue)
 library(sf)
 library(RColorBrewer)
 
-dev_fp <- '/ihme/code/covid-19/user/nathenry/covidemr/'
+dev_fp <- '~/Documents/repos/covidemr/'
 devtools::load_all(dev_fp)
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
-## Settings 
+## Settings
 ## TODO: Convert to command line
-prepped_data_version <- '20200917'
-model_run_version <- '20200917'
+prepped_data_version <- '20201019'
+model_run_version <- '20201019'
 holdout <- 0
 
 
@@ -51,7 +51,7 @@ viz_dir <- file.path(model_results_dir, prepped_data_version, 'viz')
 dir.create(viz_dir, showWarnings = FALSE)
 
 ita_viz <- function(
-  in_data, in_sf, merge_col, viz_col, title, color_breaks, color_labels, 
+  in_data, in_sf, merge_col, viz_col, title, color_breaks, color_labels,
   color_title, colors
 ){
   # Subset data down to breaks limits
@@ -63,16 +63,16 @@ ita_viz <- function(
   viz_sf <- merge(
     x = in_sf[, c(merge_col, 'geometry')],
     y = to_merge,
-    by = merge_col, 
+    by = merge_col,
     all.x = TRUE
   )
   # Visualize
-  fig <- ggplot(data=viz_sf, aes(fill=to_plot)) + 
-    geom_sf(lwd=.5, color='#444444') + 
+  fig <- ggplot(data=viz_sf, aes(fill=to_plot)) +
+    geom_sf(lwd=.5, color='#444444') +
     scale_fill_gradientn(
       colors=colors, breaks=color_breaks, labels=color_labels, na.value='#BBBBBB'
-    ) + 
-    labs(title=title, x=NULL, y=NULL, fill=color_title) + 
+    ) +
+    labs(title=title, x=NULL, y=NULL, fill=color_title) +
     theme_minimal()
   return(fig)
 }
@@ -86,10 +86,10 @@ for(this_sex in unique(excess_dt$sex)){
     color_breaks <- seq(1, 4, by=.5)
     color_labels <- paste0(color_breaks * 100, '%')
     print(ita_viz(
-      in_data = dt_sub, in_sf = shp_sf, merge_col = 'location_code', 
-      viz_col = 'max_prop', 
+      in_data = dt_sub, in_sf = shp_sf, merge_col = 'location_code',
+      viz_col = 'max_prop',
       title = glue('Highest proportion above baseline: {this_sex}, ages {this_age_group}'),
-      color_breaks = color_breaks, color_labels = color_labels, 
+      color_breaks = color_breaks, color_labels = color_labels,
       color_title = 'Max ratio\nto baseline',
       colors = rev(RColorBrewer::brewer.pal('Spectral', n=7))
     ))
@@ -107,10 +107,10 @@ for(this_sex in unique(excess_dt$sex)){
     dt_sub[, excess_per_100k := excess / pop * 1E5 ]
     color_labels <- color_breaks <- seq(0, 3000, by=1000)
     print(ita_viz(
-      in_data = dt_sub, in_sf = shp_sf, merge_col = 'location_code', 
-      viz_col = 'excess_per_100k', 
+      in_data = dt_sub, in_sf = shp_sf, merge_col = 'location_code',
+      viz_col = 'excess_per_100k',
       title = glue('Excess mortality per 100k population: {this_sex}, ages {this_age_group}'),
-      color_breaks = color_breaks, color_labels = color_labels, 
+      color_breaks = color_breaks, color_labels = color_labels,
       color_title = 'Excess mortality',
       colors = rev(RColorBrewer::brewer.pal('Spectral', n=7))
     ))
@@ -127,16 +127,16 @@ for(this_sex in unique(excess_dt$sex)){
     dt_sub[ prop_median > 5, prop_median := 4.9998 ]
     dt_sub[ prop_upper > 5, prop_upper := 4.9999 ]
     print(
-      ggplot(data=dt_sub, aes(x=week)) + 
-        facet_wrap('location_name', ncol=13) + 
-        geom_hline(yintercept = 1, linetype = 2, lwd=.5) + 
+      ggplot(data=dt_sub, aes(x=week)) +
+        facet_wrap('location_name', ncol=13) +
+        geom_hline(yintercept = 1, linetype = 2, lwd=.5) +
         geom_ribbon(aes(ymin=prop_lower, ymax=prop_upper), color=NA, fill='#AA2288', alpha=.5) +
-        geom_line(aes(y=prop_median)) + 
-        lims(y=c(0, 5)) + 
+        geom_line(aes(y=prop_median)) +
+        lims(y=c(0, 5)) +
         labs(
           y='Mortality\nproportional to\nbaseline', x='Week of 2020',
           title=glue('Excess mortality line plots by province: {this_sex}, {this_age_group}')
-        ) + 
+        ) +
         theme_minimal()
     )
   }

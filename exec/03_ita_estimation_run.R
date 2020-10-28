@@ -1,9 +1,9 @@
 ## -----------------------------------------------------------------------------
-## 
+##
 ## 03: Space-time excess mortality modeling code, using prepared data as input
-## 
+##
 ## For more details, see README at https://github.com/njhenry/covidemr/
-## 
+##
 ## -----------------------------------------------------------------------------
 
 
@@ -12,17 +12,17 @@ library(sp)
 library(sf)
 library(parallel)
 
-dev_fp <- '/ihme/code/covid-19/user/nathenry/covidemr/'
+dev_fp <- '~/Documents/repos/covidemr/'
 devtools::load_all(dev_fp)
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
-## Settings 
+## Settings
 ## TODO: Convert to command line
-run_sex <- 'male'
-prepped_data_version <- '20200917'
-model_run_version <- '20200917'
+run_sex <- 'female'
+prepped_data_version <- '20201019'
+model_run_version <- '20201019'
 holdout <- 0
-use_covs <- c('intercept') # , 'tfr','unemp','socserv'
+use_covs <- c('intercept', 'tfr','unemp','socserv')
 use_Z_stwa <- FALSE
 use_Z_sta <- !use_Z_stwa
 use_Z_fourier <- !use_Z_stwa
@@ -95,7 +95,7 @@ params_list <- list(
   beta_ages = rep(0.0, length(unique(template_dt$idx_age))),
   # Structured random effect
   Z_stwa = array(
-    0.0, 
+    0.0,
     dim = c(
       nrow(location_table), # Number of locations
       length(config$model_years), # Number of unique modeled years
@@ -160,9 +160,10 @@ model_fit <- setup_run_tmb(
   tmb_random=tmb_random,
   tmb_map=tmb_map,
   normalize = TRUE, run_symbolic_analysis = TRUE,
-  tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000, 
-  model_name="ITA deaths model", verbose=FALSE,
-  optimization_methods = c('nlminb', 'L-BFGS-B')
+  tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
+  model_name="ITA deaths model", 
+  verbose=TRUE,
+  optimization_methods = c('L-BFGS-B', 'nlminb')
 )
 
 sdrep <- sdreport(model_fit$obj, bias.correct = TRUE, getJointPrecision = TRUE)
