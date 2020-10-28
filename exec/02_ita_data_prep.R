@@ -31,7 +31,6 @@ get_prep_fp <- function(file_type){
 
 # Load prepared location table
 location_table <- data.table::fread(get_prep_fp('location_table'))
-
 # Get age groups
 age_groups <- create_age_groups(config$age_cutoffs)
 
@@ -56,17 +55,19 @@ rm(deaths_raw)
 pop_raw <- covidemr::ita_read_istat_csv(config$path$raw_pop)
 pop_prepped <- covidemr::ita_prepare_pop(pop_raw, age_cutoffs=config$age_cutoffs)
 
+# Save to file
 data.table::fwrite(pop_prepped, file = get_prep_fp('population'))
 
 
 ## Load spatial data: polygons, adjacency matrix, population raster ------------
 
+# Spatial polygons
 polys_list <- covidemr::load_format_spatial_polys(
   shp_in_fp = config$paths$shp_generalized,
   abbrev_field = 'SIGLA',
   location_table = location_table
 )
-# Create adjacency matrix
+# Adjacency matrix
 # Add manual adjacencies for islands:
 #   - Messina, Sicilia (83) <-> Reggio Calabria, mainland (80) - proximity
 #   - Cagliari, Sardinia (92) <-> Roma, mainland (58) - most common flights/ferries
@@ -75,8 +76,7 @@ adjmat <- covidemr::build_adjacency_matrix(
   allow_zero_neighbors = FALSE,
   manually_add_links = list(c(83, 80), c(92, 58))
 )
-
-# Load and format population raster
+# Population raster
 pop_raster <- covidemr::load_format_pop_raster(
   pop_fp_format = config$paths$pop_raster_layers,
   model_years = config$model_years,
@@ -111,6 +111,8 @@ covars_prepped <- lapply(covar_names, function(covar_name){
 })
 names(covars_prepped) <- covar_names
 
+# Save to file
+saveRDS(covars_prepped, file = get_prep_fp('covars_list'))
 
 ## Create template dataset containing IDs for all categories to be modeled -----
 
@@ -130,14 +132,8 @@ for(covar_name in covar_names){
     by = covars_prepped[[covar_name]]$covar_indices,
     all.x = TRUE
   )
-}
-
-# Quick validation
-for(covar_name in covar_names){
   if(any(is.na(template_dt[(year < 2020) | (week <= 26)][[covar_name]]))){
-    stop(sprintf(
-      "Missing values for covar %s in template dataset", covar_name
-    ))
+    stop("Missing values for covar ",covar_name," in template dataset")
   }
 }
 
@@ -166,5 +162,18 @@ in_data[is.na(deaths), `:=` (deaths=0, observed_days=7)]
 
 # Save to file
 fwrite(in_data, file = get_prep_fp('full_data'))
+
+
+## Rescale all covariates to N(0, 1) from the training dataset -----------------
+
+rescale_list <- rescale_prepped_covariates(
+  input_data = in_data,
+  covar_names = covar_names,
+  subset_field = 'in_baseline',
+  subset_field_values = 1
+)
+
+fwrite(rescale_list$data_rescaled, get_prep_fp('full_data_rescaled'))
+fwrite(rescale_list$covariate_scaling_factors, get_prep_fp('covar_scaling_factors'))
 
 message("** Data prep complete. **")
