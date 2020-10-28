@@ -163,7 +163,6 @@ index_populated_grid_cells <- function(pop, polys_sf, loc_field){
 
   # Reproject population and province IDs to lat-longs
   dd_crs <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
-  pop <- pop_raster[[length(model_years)]]
   prov_rast <- fasterize::fasterize(
     sf = polys_sf, raster = pop, field = loc_field
   )
