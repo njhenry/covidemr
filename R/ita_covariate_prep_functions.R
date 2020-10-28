@@ -88,100 +88,6 @@ get_covar_prep_function <- function(covar_name){
 }
 
 
-#' Validate prepared covariate data
-#'
-#' @description Given prepared covariate data, validate that the correct fields
-#'   are present and that no data is missing
-#'
-#' @param prepped_covar data.table containing the prepped covariate
-#' @param covar_name Short name for the covariate. This will be used to send the
-#'   covariate to a particular prep function.
-#' @param covar_indices Vector of identifiers that should be used to merge onto
-#'   the modeling dataset. The prepared covariate dataset should only include
-#'   identifier columns and the covariate value, specified by the covariate name
-#' @param model_years Vector of years to consider for modeling
-#' @param location_table Location code merge table for Italy
-#'
-#' @return NULL (fails if there are any issues in prepared covariate data)
-#'
-#' @import data.table
-check_covar_validity <- function(
-  prepped_covar, covar_name, covar_indices, model_years, location_table
-){
-  # Check that both exist
-  if(is.null(prepped_covar)) stop("Missing prepared covariate")
-  if(is.null(covar_indices)) stop("Missing prepared covariate indices")
-  # Check for correct columns
-  all_colnames <- c(covar_name, covar_indices)
-  missing_cols <- setdiff(all_colnames, names(prepped_covar))
-  extra_cols <- setdiff(names(prepped_covar), all_colnames)
-  if(length(c(missing_cols, extra_cols)) > 0){
-    if(missing_cols) message("Missing columns: ", paste(missing_cols, collapse=', '))
-    if(extra_cols) message("Extra columns: ", paste(extra_cols, collapse=', '))
-    stop("Resolve column issues before proceeding")
-  }
-
-  # If an index exists, check that all needed values are included
-  # Extra values are fine but will be dropped when merging on the data
-  # Helper function to check for missing values
-  check_missing <- function(idx_col, all_vals){
-    any_missing <- FALSE
-    if(idx_col %in% covar_indices){
-      missing_vals <- setdiff(all_vals, unique(prepped_covar[[idx_col]]))
-      if(length(missing_vals) > 0){
-        message("Missing ", idx_col, ": ", paste0(missing_vals, collapse=', '))
-        any_missing <- TRUE
-      }
-    }
-    # Return TRUE if there is an error, and FALSE otherwise
-    return(any_missing)
-  }
-  any_missing <- c(
-    check_missing('year', model_years),
-    check_missing('sex', c('male','female')),
-    check_missing('week', 1:52),
-    check_missing('location_code', location_table$location_code)
-  )
-  if(any(any_missing)) stop("Resolve missingness errors to proceed.")
-
-  # Validation passed!
-  invisible(NULL)
-}
-
-
-#' Extend a covariate time series forward
-#'
-#' @description Helper function to extend a covariate time series to the last
-#'   year modeled by copying forward the most recent year of data available.
-#'
-#' @param covar_data data.table containing covariates with a 'year' field
-#' @param model_year Vector of years to be included in modeling
-#'
-#' @return covariate data.table, with years extended to the most recent year of
-#'   data
-#'
-#' @import data.table
-#' @export
-extend_covar_time_series <- function(covar_data, model_years){
-  # Validate inputs: ensure that the year field exists
-  if(!('year' %in% names(covar_data))) stop("'year' field missing from data")
-
-  missing_years <- setdiff(model_years, covar_data$year)
-  # If no years are missing, return the original data.table
-  if(length(missing_years) == 0) return(covar_data)
-
-  # Extend forward
-  most_recent_year <- covar_data[year==max(year),]
-  full_data <- rbindlist(c(
-      list(covar_data),
-      lapply(missing_years, function(yr) copy(most_recent_year)[, year := yr])
-  ))[order(year)]
-
-  message("    Extended forward for years ",paste(missing_years, collapse=', '))
-  return(full_data)
-}
-
-
 #' Prepare TFR covariate
 #'
 #' @description Covariate-specific prep function for TFR (total fertility rate).
@@ -396,6 +302,7 @@ ita_prepare_covar_tax_brackets <- function(
   )
   return(list(prepped_covar = prepped_covar, covar_indices = covar_indices))
 }
+
 
 #' Prepare covariate: mean taxable income across all households
 #'
@@ -748,7 +655,7 @@ ita_prepare_covar_temperature <- function(
   ## Find the pixel with the highest population in each province
   ## The API will be queried at these points
   prov_indexing <- index_populated_grid_cells(
-    pop = pop_raster[[length(model_years)]],
+    pop = pop_raster[[ dim(pop_raster)[3] ]],
     polys_sf = polys_sf,
     loc_field = 'location_code'
   )
@@ -845,4 +752,3 @@ ita_prepare_covar_temperature <- function(
     covar_indices = c('location_code','year','week')
   ))
 }
-
