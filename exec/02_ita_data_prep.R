@@ -94,6 +94,7 @@ raster::writeRaster(pop_raster, file = get_prep_fp('pop_raster'), overwrite=TRUE
 ## Load and format covariates --------------------------------------------------
 
 covar_fps <- config$paths$raw_covars
+covar_fps$pop_density <- get_prep_fp('population')
 covar_names <- names(covar_fps)
 
 # Prepare each covariate separately using a standard function interface
@@ -113,27 +114,12 @@ names(covars_prepped) <- covar_names
 
 ## Create template dataset containing IDs for all categories to be modeled -----
 
-sex_index <- data.table(sex = c('male','female'), c_j = 1)[, idx_sex := .I - 1 ]
-
-years_index <- data.table(
-  year = sort(config$model_years),
-  c_j = 1
-)[, idx_year := .I - 1]
-
-week_dt <- data.table(
-  week = min(config$model_week_range):max(config$model_week_range),
-  c_j = 1
-)[, idx_week := .I - 1]
-
-# Full template dataset contains sex, location, year, week, age
-# idx_<index> is a zero-indexed code for each ID column
-template_dt <- location_table[order(location_code)
-  ][, `:=` (c_j = 1, idx_loc = .I - 1)
-  ][ sex_index, on='c_j', allow.cartesian=TRUE
-  ][ age_groups[, `:=` (c_j=1, idx_age=.I-1)], on='c_j', allow.cartesian=TRUE
-  ][ years_index, on='c_j', allow.cartesian=TRUE
-  ][ week_dt, on='c_j', allow.cartesian=TRUE
-  ][, c_j := NULL ]
+template_dt <- create_template_dt(
+  model_years = config$model_years,
+  model_week_range = config$model_week_range,
+  location_table = location_table,
+  age_groups = age_groups
+)
 
 # Merge on covariates
 template_dt[, intercept := 1 ]
@@ -148,13 +134,15 @@ for(covar_name in covar_names){
 
 # Quick validation
 for(covar_name in covar_names){
-  if(any(is.na(template_dt[[covar_name]]))) stop(sprintf(
-    "Missing values for covar %s in template dataset", covar_name
-  ))
+  if(any(is.na(template_dt[(year < 2020) | (week <= 26)][[covar_name]]))){
+    stop(sprintf(
+      "Missing values for covar %s in template dataset", covar_name
+    ))
+  }
 }
 
 # Save out
-write.csv(template_dt, file = get_prep_fp('template'), row.names = FALSE)
+fwrite(template_dt, file = get_prep_fp('template'))
 
 
 ## Merge deaths and population onto the template to get full input dataset -----
@@ -177,6 +165,6 @@ if(nrow(in_data[is.na(deaths)])/nrow(in_data) > .2){
 in_data[is.na(deaths), `:=` (deaths=0, observed_days=7)]
 
 # Save to file
-write.csv(in_data, file = get_prep_fp('full_data'), row.names = FALSE)
+fwrite(in_data, file = get_prep_fp('full_data'))
 
 message("** Data prep complete. **")
