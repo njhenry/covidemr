@@ -7,14 +7,14 @@
 ##
 ## Execution: Takes one positional argument, location of raw data folder
 ## Example:
-##   ./00_download_data.sh /path/to/input/folder/
+##   ./00_download_data.sh /path/to/input/data/folder/
 ##
 ## -----------------------------------------------------------------------------
 
 echo "======================================================================" &&
 echo "" &&
 echo "*** Data will be saved to $1 ***" &&
-cd $1 && mkdir shp && mkdir deaths && mkdir pop_raster && mkdir covars/raw && cd shp &&
+cd $1 && mkdir shp && mkdir deaths && mkdir pop_raster && mkdir covars/raster && cd shp &&
 wget http://www.istat.it/storage/cartografia/confini_amministrativi/non_generalizzati/Limiti01012020.zip &&
 unzip Limiti01012020.zip &&
 wget http://www.istat.it/storage/cartografia/confini_amministrativi/generalizzati/Limiti01012020_g.zip &&
@@ -38,16 +38,12 @@ cd ../covars/ &&
 cp ../../meteostat_api_key.txt ./ &&
 mkdir meteostat_cache_dir &&
 echo "*** Downloading raster covariates: ***" &&
-echo "***   - 1) Access to hospitals ***" &&
-cd raw &&
+echo "***   - Access to hospitals ***" &&
+cd raster &&
 wget "https://malariaatlas.org/geoserver/ows?service=CSW&version=2.0.1&request=DirectDownload&ResourceId=Explorer:2020_motorized_travel_time_to_healthcare" \
   -O healthcare_access.zip &&
 unzip healthcare_access.zip &&
 rm healthcare_access.zip &&
 mv 2020_motorized_travel_time_to_healthcare.geotiff healthcare_access.tif &&
-echo "***   - 2) Elevation ***" &&
-wget http://tinitaly.pi.ingv.it/AJK764GHJ0987NBV/TINITALY_image.zip -O italy_DEM.zip &&
-unzip italy_DEM.zip -d italy_DEM &&
-rm italy_DEM.zip &&
 echo "" &&
 echo "================================ DONE ================================";

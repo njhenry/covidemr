@@ -7,14 +7,13 @@ paths:
     unemp: '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_unemployment_2015_2019_province.csv'
     socserv: '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_social_services_2015_2017_province.csv'
     tax_brackets: '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_income_categories_by_muni_2015_2018.csv'
-    hc_access: '~/temp_data/ita_emr/raw_data/20201026/covars/raw/healthcare_access.tif'
-    # elevation: '~/temp_data/ita_emr/raw_data/20201026/covars/raw/italy_DEM/Italia_tinitaly.jpg'
-    # temperature: '~/temp_data/ita_emr/raw_data/20201026/covars/raw/cru_ts4.04.2011.2019.tmp.dat.nc'
+    tax_income: [
+      '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_income_totals_by_muni_2015_2018.csv',
+      '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_income_categories_by_muni_2015_2018.csv'
+    ]
+    hc_access: '~/temp_data/ita_emr/raw_data/20201026/covars/raster/healthcare_access.tif'
+    elevation: '~/temp_data/ita_emr/raw_data/20201026/covars/raster/italy_DEM/30n000e_20101117_gmted_med150.tif'
     temperature: '~/temp_data/ita_emr/raw_data/20201026/covars/meteostat_api_key.txt' # From dev.meteostat.net
-    # tax_income: [
-    #   '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_income_totals_by_muni_2015_2018.csv',
-    #   '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_income_categories_by_muni_2015_2018.csv'
-    # ]
   shp_detailed: '~/temp_data/ita_emr/raw_data/20201026/shp/Limiti01012020/ProvCM01012020/ProvCM01012020_WGS84.shp'
   shp_generalized: '~/temp_data/ita_emr/raw_data/20201026/shp/Limiti01012020_g/ProvCM01012020_g/ProvCM01012020_g_WGS84.shp'
   prepped_data: '~/temp_data/ita_emr/prepped_data'
