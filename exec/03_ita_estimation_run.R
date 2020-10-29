@@ -18,7 +18,7 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## Settings
 ## TODO: Convert to command line
-run_sex <- 'female'
+run_sex <- 'male'
 prepped_data_version <- '20201026'
 model_run_version <- '20201028'
 holdout <- 0
@@ -174,20 +174,29 @@ model_fit <- ocvidemr::setup_run_tmb(
 sdrep <- sdreport(model_fit$obj, bias.correct = TRUE, getJointPrecision = TRUE)
 
 
-
 ## Create post-estimation predictive objects -----------------------------------
 
 # Draws of parameters and baseline modeled deaths (assuming no COVID)
-postest_draws_list <- covidemr::generate_stwa_draws(
-  tmb_sdreport = sdrep,
-  keep_params = c("beta_covs", "beta_ages", "Z_stwa", "Z_sta", "Z_fourier"),
-  num_draws = config$num_draws,
-  covariate_names = use_covs,
-  template_dt = template_dt,
-  fourier_harmonics_level = fourier_levels
-)
-param_draws <- postest_draws_list$param_draws
-pred_draws <- postest_draws_list$predictive_draws
+postest_list <- vector('list', length = ceiling(config$num_draws / 50))
+for(ii in 1:length(postest_list)){
+  postest_list[[ii]] <- covidemr::generate_stwa_draws(
+    tmb_sdreport = sdrep,
+    keep_params = c("beta_covs", "beta_ages", "Z_stwa", "Z_sta", "Z_fourier"),
+    num_draws = min(50, config$num_draws - (ii - 1) * 50),
+    covariate_names = use_covs,
+    template_dt = template_dt,
+    fourier_harmonics_level = fourier_levels
+  )
+}
+cbindlist <- function(a_list) setDT(unlist(a_list, recursive=FALSE))
+param_draws <- cbindlist(c(
+  list(data.table(parameter = postest_list[[1]]$param_names)),
+  lapply(postest_list, function(sl) as.data.table(sl$param_draws))
+))
+colnames(param_draws) <- c('parameter', paste0('V',1:config$num_draws))
+pred_draws <- cbindlist(lapply(postest_list, function(sl) as.data.table(sl$predictive_draws)))
+colnames(pred_draws) <- paste0('V',1:config$num_draws)
+rm(postest_list)
 # Summarize draws
 pred_summary <- cbind(template_dt, summarize_draws(pred_draws))
 
@@ -220,7 +229,6 @@ for(obj_str in names(config$results_files)){
   # Parse output file
   out_fp <- glue::glue(config$results_files[[obj_str]])
   message(glue::glue("Saving {obj_str} to {out_fp}"))
-
   # Save to file differently depending on format
   if(endsWith(tolower(out_fp), 'rds')){
     saveRDS(get(obj_str), file = out_fp)
