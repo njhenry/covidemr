@@ -96,10 +96,12 @@ get_fourier_seasonality_fit <- function(fourier_coefs){
 #'   fit seasonality in the model. This parameter will be ignored if there are
 #'   no `Z_fourier` parameters in the fitted output
 #'
-#' @return A named list with two items:
-#'   - 'param_draws': Draws of parameters
-#'   - 'pred_draws': Predictive draws taken at the observation points specified
-#'        in the `template_dt`
+#' @return A named list with three items:
+#'   - 'param_names': Vector of parameter names in the order they have been
+#'        extracted
+#'   - 'param_draws': Matrix of parameter draws
+#'   - 'pred_draws': Matrix of mortality predictive draws, taken at the
+#'        observation points specified in the `template_dt`
 #'
 #' @import tictoc
 #' @import data.table
@@ -198,17 +200,20 @@ generate_stwa_draws <- function(
     }
     num_f_groups <- sum(parnames=='Z_fourier') / f_ncol
     # Create a matrix of size (num weeks * fourier groups) by (num draws)
-    z_fourier <- Reduce("rbind", lapply(1:num_f_groups, function(f_group){
-      terms_idx <- 0:(f_ncol - 1) * num_f_groups + f_group
-      # Return (52) fit weekly values by draw
-      draws_list <- lapply(
-        1:num_draws, function(dd){
-          get_fourier_seasonality_fit(
-            param_draws[parnames=='Z_fourier',][terms_idx, dd]
-          )
-        })
-      return(Reduce('cbind', draws_list))
-    }))
+    z_fourier <- Reduce(
+      'rbind',
+      lapply(1:num_f_groups, function(f_group){
+        terms_idx <- 0:(f_ncol - 1) * num_f_groups + f_group
+        # Return (52) fit weekly values by draw
+        draws_list <- lapply(
+          1:num_draws, function(dd){
+            get_fourier_seasonality_fit(
+              param_draws[parnames=='Z_fourier',][terms_idx, dd]
+            )
+          })
+        return(matrix(unlist(draws_list), ncol=num_draws))
+      })
+    )
     # Create the associated lookup table
     fourier_lookup <- CJ(idx_fourier = (1:num_f_groups) - 1, idx_week = 0:51)
     fourier_lookup[, f_row := .I ]
@@ -222,7 +227,11 @@ generate_stwa_draws <- function(
   templ <- templ[order(row_id)]
   preds <- preds[templ$sorted_row_id, ]
   # Return parameter draws and predictive draws
-  return(list(param_draws = param_draws, predictive_draws = preds))
+  return(list(
+    param_names = parnames,
+    param_draws = param_draws,
+    predictive_draws = preds
+  ))
 }
 
 
@@ -296,9 +305,10 @@ get_excess_death_draws <- function(death_data, baseline_draws, template_dt){
 #'
 #' @return data.table with columns 'mean','median','upper','lower' (of 95% UI)
 #'
-#' @import matrixStats
+#' @import data.table matrixStats
 #' @export
 summarize_draws <- function(draws){
+  if('data.table' %in% class(draws)) draws <- as.matrix(draws)
   summs <- cbind(
     rowMeans(draws), matrixStats::rowQuantiles(draws, probs=c(0.5, 0.025, 0.975))
   )
