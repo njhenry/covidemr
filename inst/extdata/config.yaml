@@ -34,6 +34,7 @@ prepped_data_files:
 results_files:
   data_stack: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_data_stack.RDS'
   params_list: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_params_list.RDS'
+  map_glm_fit: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_map_glm_fit.RDS'
   model_fit: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_model_fit.RDS'
   sdrep: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_sdrep.RDS'
   param_draws: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_param_draws.csv'
