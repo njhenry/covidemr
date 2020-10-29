@@ -82,6 +82,8 @@ get_fourier_seasonality_fit <- function(fourier_coefs){
 #'   `getJointPrecision = TRUE` in the call to `sdreport()`). This object will be
 #'   parsed to check for fixed effects, random effects, and the Fourier time
 #'   series terms.
+#' @param keep_params [char] Vector of parameter names to keep when generating
+#'   draws from the precision matrix. Keep only parameters needed for prediction
 #' @param num_draws [int] How many posterior predictive samples to take?
 #' @param covariate_names [char] All covariate field names, including 'intercept'
 #' @param template_dt [data.table] table containing at least the following fields:
@@ -95,19 +97,24 @@ get_fourier_seasonality_fit <- function(fourier_coefs){
 #'   no `Z_fourier` parameters in the fitted output
 #'
 #' @return A named list with two items:
-#'   - XX TODO
+#'   - 'param_draws': Draws of parameters
+#'   - 'pred_draws': Predictive draws taken at the observation points specified
+#'        in the `template_dt`
 #'
 #' @import tictoc
 #' @import data.table
 #' @export
 generate_stwa_draws <- function(
-  tmb_sdreport, num_draws, covariate_names, template_dt, fourier_harmonics_level
+  tmb_sdreport, keep_params, num_draws, covariate_names, template_dt,
+  fourier_harmonics_level
 ){
   # Copy input data
   templ <- data.table::copy(template_dt)
 
   # Get parameter names
   mu <- c(tmb_sdreport$par.fixed, tmb_sdreport$par.random)
+  param_subset <- which(names(mu) %in% keep_params)
+  mu <- mu[ param_subset ]
   parnames <- names(mu)
 
   ## Input data checks
@@ -131,9 +138,13 @@ generate_stwa_draws <- function(
   ## Get parameter draws
   message(sprintf(" - Generating %i parameter draws...", num_draws))
   tictoc::tic(" - Parameter draw generation")
+  prec_mat <- tmb_sdreport$jointPrecision
+  prec_subset <- which(colnames(prec_mat) %in% keep_params)
+  prec_mat <- prec_mat[ prec_subset, prec_subset ]
+  if(any(colnames(prec_mat) != parnames )) stop("Issue with parameter ordering")
   param_draws <- rmvnorm_prec(
     mu = mu,
-    prec = tmb_sdreport$jointPrecision,
+    prec = prec_mat,
     n.sims = num_draws
   )
   rownames(param_draws) <- parnames
@@ -216,12 +227,12 @@ generate_stwa_draws <- function(
 
 
 #' Get draws of excess deaths
-#' 
-#' @description The traditional calculation for COVID excess mortality 
+#'
+#' @description The traditional calculation for COVID excess mortality
 #'   calculates excess deaths by subtracting the observed number of deaths from
 #'   an estimated baseline. This function subtracts the observed value (a
 #'   single value) from the baseline (by draw) to get draws of excess.
-#' 
+#'
 #' @param baseline_draws Predicted draws for the number of deaths that would
 #'   occur in the absence of COVID
 #' @param template_dt The template data.table linking predictive draws
@@ -229,15 +240,15 @@ generate_stwa_draws <- function(
 #'   year, week, and age group. The true deaths will be matched to the predicted
 #'   counterfactual deaths (by way of the `template_dt`) and one subtracted from
 #'   the other to estimate excess.
-#' 
+#'
 #' @return Named list containing three items:
 #'   - 'obs_deaths': Data.table of observed deaths
-#'   - 'excess_draws': Matrix containing excess mortality draws by 
+#'   - 'excess_draws': Matrix containing excess mortality draws by
 #'       location/year/week/age. Each row of this matrix corresponds to a row in
 #'       `obs_deaths`.
-#'   - 'proportion_draws': Same format as excess_draws, but containing the 
+#'   - 'proportion_draws': Same format as excess_draws, but containing the
 #'        ratio of deaths compared to baseline rather than the difference
-#' 
+#'
 #' @import data.table
 #' @export
 get_excess_death_draws <- function(death_data, baseline_draws, template_dt){
@@ -246,9 +257,9 @@ get_excess_death_draws <- function(death_data, baseline_draws, template_dt){
   templ[, row_id := .I ]
   deaths_sub <- death_data[in_baseline == 0, ]
   templ <- templ[
-    (idx_loc %in% deaths_sub$idx_loc) & 
-    (idx_year %in% deaths_sub$idx_year) & 
-    (idx_week %in% deaths_sub$idx_week) & 
+    (idx_loc %in% deaths_sub$idx_loc) &
+    (idx_year %in% deaths_sub$idx_year) &
+    (idx_week %in% deaths_sub$idx_week) &
     (idx_age %in% deaths_sub$idx_age),
   ]
   # Merge on deaths and observed days
