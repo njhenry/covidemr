@@ -52,6 +52,7 @@ print(knitr::kable(vif_results))
 
 
 
+
 ## Visualize covariates against each other -------------------------------------
 
 
