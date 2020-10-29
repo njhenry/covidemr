@@ -21,13 +21,8 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 prepped_data_version <- '20201026'
 
 # Helper function to create a filepath for a particular prepped data object
-get_prep_fp <- function(file_type){
-  return(file.path(
-    config$paths$prepped_data,
-    prepped_data_version,
-    config$prepped_data_files[[file_type]]
-  ))
-}
+prep_dir <- file.path(config$paths$prepped_data, prepped_data_version)
+get_prep_fp <- function(ff) file.path(prep_dir, config$prepped_data_files[[ff]])
 
 # Load prepared location table
 location_table <- data.table::fread(get_prep_fp('location_table'))
