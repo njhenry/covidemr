@@ -1,12 +1,12 @@
 // ///////////////////////////////////////////////////////////////////////////// //
 //
 // TMB OPTIMIZATION MODEL FOR ITALY MORTALITY MODEL
-// 
+//
 // Author: Nat Henry
 // Created: 21 August 2020
 // Purpose: TMB objective function for Italy all-cause mortality model with
 //   space, time (year/week), and age random effects
-// 
+//
 // /////////////////////////////////////////////////////////////////////////////
 
 
@@ -16,7 +16,7 @@
 #include <vector>
 #include <stdio.h>
 using namespace density;
-using Eigen::SparseMatrix; 
+using Eigen::SparseMatrix;
 
 
 // HELPER FUNCTIONS ----------------------------------------------------------->
@@ -25,7 +25,7 @@ using Eigen::SparseMatrix;
 //  and a distribution
 // Taken from MacNab 2011, adapted from the `ar.matrix` package:
 // https://rdrr.io/cran/ar.matrix/src/R/Q.lCAR.R
-template<class Type> 
+template<class Type>
 SparseMatrix<Type> lcar_q_from_graph(SparseMatrix<Type> graph, Type sigma, Type rho){
   SparseMatrix<Type> D(graph.rows(), graph.cols());
   SparseMatrix<Type> I(graph.rows(), graph.cols());
@@ -59,7 +59,7 @@ Type objective_function<Type>::operator() () {
     DATA_INTEGER(flag);
 
     // OPTION: Holdout number
-    // Any observation where `idx_holdout` is equal to `holdout` will be 
+    // Any observation where `idx_holdout` is equal to `holdout` will be
     //   excluded from this model fit
     // Holdouts are 1-indexed, so if holdout==0 all data will be used
     DATA_INTEGER(holdout);
@@ -68,7 +68,7 @@ Type objective_function<Type>::operator() () {
     DATA_VECTOR(y_i); // Number of deaths in a given location/year/week/age group
     DATA_VECTOR(n_i); // Population size for the corresponding group
     DATA_VECTOR(days_exp_i); // Days of exposure in a given week of observations
-    
+
     // Fixed effects
     // Matrix of (n observations) * (m covariates including intercept)
     DATA_MATRIX(X_ij);
@@ -76,7 +76,7 @@ Type objective_function<Type>::operator() () {
     // Indices
     DATA_IVECTOR(idx_loc);     // Index for the location of the observation
     DATA_IVECTOR(idx_year);    // Index for the time period (year)
-    DATA_IVECTOR(idx_week);    // Index for the time period (week) 
+    DATA_IVECTOR(idx_week);    // Index for the time period (week)
     DATA_IVECTOR(idx_age);     // Index for the age group
     DATA_IVECTOR(idx_fourier); // Index for the Fourier transform group
     DATA_IVECTOR(idx_holdout); // Holdout index for each BH observation
@@ -88,6 +88,7 @@ Type objective_function<Type>::operator() () {
     DATA_INTEGER(use_Z_stwa);
     DATA_INTEGER(use_Z_sta);
     DATA_INTEGER(use_Z_fourier);
+    DATA_INTEGER(use_nugget);
     DATA_INTEGER(harmonics_level);
 
 
@@ -96,6 +97,19 @@ Type objective_function<Type>::operator() () {
     // Fixed effects
     PARAMETER_VECTOR(beta_covs); // Vector of fixed effects on covariates
     PARAMETER_VECTOR(beta_ages); // Vector of fixed effects on age group
+
+    // Random effect autocorrelation parameters, transformed scale
+    PARAMETER(rho_loc_trans);  // By location
+    PARAMETER(rho_year_trans); // By year
+    PARAMETER(rho_week_trans); // By week
+    PARAMETER(rho_age_trans);  // By age group
+
+    // Variance of space-time-age-year random effect
+    PARAMETER(log_sigma_loc);
+    PARAMETER(log_sigma_year);
+    PARAMETER(log_sigma_week);
+    PARAMETER(log_sigma_age);
+    PARAMETER(log_sigma_nugget);
 
     // Correlated random effect surfaces
     // Multiple possible surfaces can be added together
@@ -112,18 +126,6 @@ Type objective_function<Type>::operator() () {
     // Vector of random effects, same length as number of observations
     PARAMETER_VECTOR(nugget);
 
-    // Random effect autocorrelation parameters, transformed scale
-    PARAMETER(rho_loc_trans);  // By location
-    PARAMETER(rho_year_trans); // By year
-    PARAMETER(rho_week_trans); // By week
-    PARAMETER(rho_age_trans);  // By age group
-
-    // Variance of space-time-age-year random effect
-    PARAMETER(log_sigma_loc);
-    PARAMETER(log_sigma_year);
-    PARAMETER(log_sigma_week);
-    PARAMETER(log_sigma_age);
-    PARAMETER(log_sigma_nugget);
 
   // DATA CHECKS -------------------------------------------------------------->
 
@@ -155,7 +157,7 @@ Type objective_function<Type>::operator() () {
     Type sigma_age = exp(log_sigma_age);
     Type sigma_nugget = exp(log_sigma_nugget);
 
-    // Create the LCAR covariance matrix 
+    // Create the LCAR covariance matrix
     SparseMatrix<Type> loc_Q = lcar_q_from_graph(\
         loc_adj_mat, sigma_loc, rho_loc\
     );
@@ -179,12 +181,14 @@ Type objective_function<Type>::operator() () {
   // JNLL CONTRIBUTION FROM PRIORS -------------------------------------------->
 
     // N(0, 3) prior for fixed effects
-    for(int j = 0; j < num_covs; j++){
+    // Skip the intercept (index 0)
+    for(int j = 1; j < num_covs; j++){
       PARALLEL_REGION jnll -= dnorm(beta_covs(j), Type(0.0), Type(3.0), true);
     }
 
     // N(0, 3) prior for age effects
-    for(int j = 0; j < beta_ages.size(); j++){
+    // Skip the first age group (index 0)
+    for(int j = 1; j < beta_ages.size(); j++){
       PARALLEL_REGION jnll -= dnorm(beta_ages(j), Type(0.0), Type(3.0), true);
     }
 
@@ -217,7 +221,7 @@ Type objective_function<Type>::operator() () {
                   GMRF(loc_Q, false)\
               )\
           )\
-      )(Z_stwa);        
+      )(Z_stwa);
     }
 
     if(use_Z_sta == 1){
@@ -233,8 +237,10 @@ Type objective_function<Type>::operator() () {
     }
 
     // Evaluation of nugget
-    for(int i = 0; i < num_obs; i++){
-      PARALLEL_REGION jnll -= dnorm(nugget(i), Type(0.0), sigma_nugget, true);
+    if(use_nugget == 1){
+      for(int i = 0; i < num_obs; i++){
+        PARALLEL_REGION jnll -= dnorm(nugget(i), Type(0.0), sigma_nugget, true);
+      }
     }
 
     if(flag == 0) return jnll;
@@ -253,7 +259,7 @@ Type objective_function<Type>::operator() () {
           struct_res_i(i) += Z_stwa(idx_loc(i), idx_year(i), idx_week(i), idx_age(i));
         }
         if(use_Z_sta == 1){
-          struct_res_i(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));          
+          struct_res_i(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));
         }
         if(use_Z_fourier == 1){
           for(int lev=1; lev <= harmonics_level; lev++){
@@ -261,9 +267,12 @@ Type objective_function<Type>::operator() () {
               Z_fourier(idx_fourier(i), 2*lev-1) * cos(lev * (idx_week(i) + 1.0) * year_freq);
           }
         }
-        
+        if(use_nugget == 1){
+          struct_res_i(i) += nugget(i);
+        }
+
         // Determine logit probability for this observation
-        log_prob_i(i) = fes_i(i) + beta_ages(idx_age(i)) + struct_res_i(i) + nugget(i);
+        log_prob_i(i) = fes_i(i) + beta_ages(idx_age(i)) + struct_res_i(i);
 
         PARALLEL_REGION jnll -= dpois(\
             y_i(i),\
@@ -271,7 +280,7 @@ Type objective_function<Type>::operator() () {
             true\
         );
       }
-    }    
+    }
 
 
   // RETURN JNLL -------------------------------------------------------------->

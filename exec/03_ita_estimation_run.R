@@ -12,50 +12,37 @@ library(sp)
 library(sf)
 library(parallel)
 
-dev_fp <- '~/Documents/repos/covidemr/'
+dev_fp <- '~/repos/covidemr/'
 devtools::load_all(dev_fp)
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## Settings
 ## TODO: Convert to command line
 run_sex <- 'female'
-prepped_data_version <- '20201019'
-model_run_version <- '20201019'
+prepped_data_version <- '20201026'
+model_run_version <- '20201028'
 holdout <- 0
-use_covs <- c('intercept', 'tfr','unemp','socserv')
+use_covs <- c(
+  'intercept','tfr','unemp','socserv','tax_brackets','hc_access','elevation',
+  'temperature'
+)
 use_Z_stwa <- FALSE
-use_Z_sta <- !use_Z_stwa
-use_Z_fourier <- !use_Z_stwa
+use_Z_sta <- TRUE
+use_Z_fourier <- TRUE
+use_nugget <- FALSE
 fourier_levels <- 2
 
 
 ## Load and prepare data -------------------------------------------------------
 
-# Load data
-prep_file <- function(key){
-  prep_dir <- file.path(config$paths$prepped_data, prepped_data_version)
-  return(file.path(prep_dir, config$prepped_data_files[[key]]))
-}
-prepped_data <- fread(prep_file('full_data'))
-template_dt <- fread(prep_file('template'))
-location_table <- fread(prep_file('location_table'))
-adjmat <- readRDS(prep_file('adjacency_matrix'))
+# Helper functions for loading prepared data
+prep_dir <- file.path(config$paths$prepped_data, prepped_data_version)
+get_prep_fp <- function(ff) file.path(prep_dir, config$prepped_data_files[[ff]])
 
-# Prepare the following required inputs for modeling:
-# Input data stack:
-#  - Response y_i and population n_i, as vectors
-#  - Days of exposure exp_i, for normalization
-#  - Fixed effects (with intercept) as a matrix
-#  - Zero-indexed random effects: year, location code (province), age
-#  - Adjacency matrix
-# Parameters list:
-#  - Vector of covariate fixed effects
-#  - Vector of age fixed effects
-#  - Array of space (x) time (x) age-structured random effects
-#  - Vector of iid random effects
-#  - Random effect hyperparameters
-# Additional data:
-#  - Table associating province/age/time values with random effect indices
+prepped_data <- data.table::fread(get_prep_fp('full_data_rescaled'))
+template_dt <- data.table::fread(get_prep_fp('template'))
+location_table <- data.table::fread(get_prep_fp('location_table'))
+adjmat <- readRDS(get_prep_fp('adjacency_matrix'))
 
 ## Subset data to sex being modeled; merge indices on prepared data
 template_dt <- template_dt[sex==run_sex, ]
@@ -67,9 +54,12 @@ prepped_data[, idx_fourier := 0 ] # Alternate option: group by age
 prepped_data$idx_holdout <- 1
 
 # Subset to only input data for this model
-in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baselin=e=1), ]
+in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baseline==1), ]
 
 
+## Define input data stack (the data used to fit the model) --------------------
+
+# Define data stack
 data_stack <- list(
   holdout = holdout,
   y_i = in_data_final$deaths,
@@ -86,16 +76,38 @@ data_stack <- list(
   use_Z_stwa = as.integer(use_Z_stwa),
   use_Z_sta = as.integer(use_Z_sta),
   use_Z_fourier = as.integer(use_Z_fourier),
+  use_nugget = as.integer(use_nugget),
   harmonics_level = as.integer(fourier_levels)
 )
 
+
+## Define parameters (what is fit in the model) and their constraints ----------
+
+# Find MAP approximation of all model fixed effects. This will be used to set
+#  the starting values for the model
+max_a_priori_list <- covidemr::find_map_parameter_estimates(
+  in_data = in_data_final,
+  numerator_field = 'deaths',
+  denominator_field = 'pop',
+  covar_names = use_covs,
+  grouping_field = 'idx_age',
+  family = 'poisson',
+  link_fun = 'log'
+)
+map_glm_fit <- max_a_priori_list$glm_fit
+
 params_list <- list(
   # Fixed effects
-  beta_covs = rep(0.0, length(use_covs)),
-  beta_ages = rep(0.0, length(unique(template_dt$idx_age))),
+  beta_covs = unname(max_a_priori_list$fixed_effects_map),
+  beta_ages = unname(max_a_priori_list$fixed_effects_grouping),
+  # Rho parameters
+  rho_loc_trans = 0.0, rho_year_trans = 0.0, rho_week_trans = 0.0,
+  rho_age_trans = 0.0,
+  # Variance parameters
+  log_sigma_loc = 0, log_sigma_year = 0, log_sigma_week = 0,
+  log_sigma_age = 0, log_sigma_nugget = 0,
   # Structured random effect
-  Z_stwa = array(
-    0.0,
+  Z_stwa = array(0.0,
     dim = c(
       nrow(location_table), # Number of locations
       length(config$model_years), # Number of unique modeled years
@@ -103,67 +115,60 @@ params_list <- list(
       length(config$age_cutoffs) # Number of age groups
     )
   ),
-  Z_sta = array(
-    0.0,
+  Z_sta = array(0.0,
     dim = c(
       nrow(location_table), # Number of locations
       length(config$model_years), # Number of unique modeled years
       length(config$age_cutoffs) # Number of age groups
     )
   ),
-  Z_fourier = array(
-    0.0,
+  Z_fourier = array(0.0,
     dim = c(
       max(in_data_final$idx_fourier) + 1,
       2 * fourier_levels
     )
   ),
   # Unstructured random effect
-  nugget = rep(0.0, length(data_stack$n_i)),
-  # Rho parameters
-  rho_loc_trans = 0.0, rho_year_trans = 0.0, rho_week_trans = 0.0,
-  rho_age_trans = 0.0,
-  # Variance parameters
-  log_sigma_loc = 0, log_sigma_year = 0, log_sigma_week = 0,
-  log_sigma_age = 0, log_sigma_nugget = 0
+  nugget = rep(0.0, length(data_stack$n_i))
 )
 
-
-## Hold first age fixed effect constant
+# Fix particular parameter values using the TMB map
 tmb_map <- list()
 if(length(params_list$beta_ages) > 1){
   tmb_map$beta_ages <- as.factor(c(NA, 2:length(params_list$beta_ages)))
 }
-if( !use_Z_stwa ){
-  tmb_map$Z_stwa <- rep(as.factor(NA), prod(dim(params_list$Z_stwa)))
+if(!use_Z_stwa){
+  tmb_map$Z_stwa <- rep(as.factor(NA), length(params_list$Z_stwa))
+  tmb_map$rho_week_trans <- as.factor(NA)
+  tmb_map$log_sigma_week <- as.factor(NA)
 }
-if( !use_Z_sta ){
-  tmb_map$Z_sta <- rep(as.factor(NA), prod(dim(params_list$Z_sta)))
+if(!use_Z_sta) tmb_map$Z_sta <- rep(as.factor(NA), length(params_list$Z_sta))
+if(!use_Z_fourier) tmb_map$Z_fourier <- rep(as.factor(NA), length(params_list$Z_fourier))
+if(!use_nugget){
+  tmb_map$nugget <- rep(as.factor(NA), length(params_list$nugget))
+  tmb_map$log_sigma_nugget <- as.factor(NA)
 }
-if( !use_Z_fourier ){
-  tmb_map$Z_fourier <- rep(as.factor(NA), prod(dim(params_list$Z_fourier)))
-}
-tmb_map$nugget <- rep(as.factor(NA), length(params_list$nugget))
-tmb_map$rho_week_trans <- as.factor(NA)
-tmb_map$log_sigma_week <- as.factor(NA)
-tmb_map$log_sigma_nugget <- as.factor(NA)
 
-tmb_random <- c('nugget')
+# Set random effects
+tmb_random <- character(0)
+if(use_nugget) tmb_random <- c(tmb_random, 'nugget')
 if(use_Z_stwa) tmb_random <- c(tmb_random, 'Z_stwa')
 if(use_Z_sta) tmb_random <- c(tmb_random, 'Z_sta')
-# if(use_Z_fourier) tmb_random <- c(tmb_random, "Z_fourier")
+if(use_Z_fourier) tmb_random <- c(tmb_random, 'Z_fourier')
 
-## Run modeling!
-model_fit <- setup_run_tmb(
+
+## Run modeling ----------------------------------------------------------------
+
+model_fit <- ocvidemr::setup_run_tmb(
   tmb_data_stack=data_stack,
   params_list=params_list,
   tmb_random=tmb_random,
   tmb_map=tmb_map,
   normalize = TRUE, run_symbolic_analysis = TRUE,
   tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
-  model_name="ITA deaths model", 
+  model_name="ITA deaths model",
   verbose=TRUE,
-  optimization_methods = c('L-BFGS-B', 'nlminb')
+  optimization_methods = c('nlminb', 'L-BFGS-B')
 )
 
 sdrep <- sdreport(model_fit$obj, bias.correct = TRUE, getJointPrecision = TRUE)
@@ -175,6 +180,7 @@ sdrep <- sdreport(model_fit$obj, bias.correct = TRUE, getJointPrecision = TRUE)
 # Draws of parameters and baseline modeled deaths (assuming no COVID)
 postest_draws_list <- covidemr::generate_stwa_draws(
   tmb_sdreport = sdrep,
+  keep_params = c("beta_covs", "beta_ages", "Z_stwa", "Z_sta", "Z_fourier"),
   num_draws = config$num_draws,
   covariate_names = use_covs,
   template_dt = template_dt,
