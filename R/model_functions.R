@@ -1,3 +1,84 @@
+#' Get Maximum a Priori (MAP) parameter estimates
+#'
+#' @description Find the Maximum a Priori (MAP) estimates for fixed effect
+#'   parameter values, including age-specific fixed effects, in a simplified
+#'   version of the GLMM. Starting the full TMB model with fixed effect starting
+#'   values set at the MAP has been shown to improve performance and run time.
+#'
+#' @param in_data Input data.table, including only the data used to train the
+#'    model. Fields must include a numerator, a denominator, fields named for
+#'    all covariates, and (optionally) an age ID field
+#' @param numerator_field Field name for the numerator (eg deaths)
+#' @param denominator_field Field name for the denominator (eg population)
+#' @param covar_names Names of all covariates, including 'intercept' if desired
+#' @param grouping_field [optional] Field that groups observations by ID
+#' @param family [optional, default 'poisson'] Which distribution family
+#'   should be followed (and therefore what link function should be used?) See
+#'   `help(family)` for more information and alternate options
+#' @param link_fun [optional, default 'log'] What link function should be used
+#'   to link the outcome variable with the underlying linear regression? This is
+#'   also relevant to how the offset is implemented
+#'
+#' @return Named list with two items:
+#'     - "glm_fit": Full model fit for the GLM
+#'     - "fixed_effects_map": Maximum a priori estimates for covariate fixed
+#'          effects, organized as a named numeric vector
+#'     - "fixed_effects_grouping": Maximum a priori estimates for grouped fixed
+#'          effects, organized as a vector of length(num groups). This list item
+#'          is NULL if the argument `grouping_field` was not specified
+#'
+#' @import data.table glue stats
+#' @export
+find_map_parameter_estimates <- function(
+  in_data, numerator_field, denominator_field, covar_names,
+  grouping_field = NULL, family = 'poisson', link_fun = 'log'
+){
+  # Copy to ensure this doesn't overwrite data outside of the function scope
+  model_data <- data.table::copy(in_data)
+  # Ensure that all columns are available in input data
+  reqd <- c(numerator_field, denominator_field, covar_names, grouping_field)
+  missing_fields <- reqd[ !reqd %in% names(model_data) ]
+  if(length(missing_fields) > 0){
+    stop("Input data missing fields: ", paste(missing_fields, collapse=', '))
+  }
+
+  # Add group-based fixed effects, if specified
+  if(!is.null(grouping_field) & model_data[, uniqueN(get(grouping_field)) ] > 1){
+    grp_vals <- sort(unique(model_data[[grouping_field]]))
+    # The first group is set as 'default' - others vary with a fixed effect
+    for(grp_val in grp_vals[2:length(grp_vals)]){
+      model_data[, paste0('grp',grp_val) := 0 ]
+      model_data[ get(grouping_field) == grp_val, paste0('grp',grp_val) := 1 ]
+    }
+    grp_cols <- paste0('grp', grp_vals[2:length(grp_vals)])
+  } else {
+    grp_cols <- c()
+  }
+
+  # Set up formula with an offset based on link function, then run the GLM
+  formula_char <- glue::glue(
+    "{numerator_field} ~ 0 + {paste(c(covar_names, grp_cols), collapse = ' + ')}",
+    " + offset({link_fun}({denominator_field}))"
+  )
+  glm_fit <- stats::glm(formula_char, data = model_data, family = family)
+
+  # Return the full GLM fit, the covariate fixed effects, and (optionally) the
+  #  grouped fixed effects
+  covs_map <- glm_fit$coefficients[ covar_names ]
+  if(length(grp_cols) > 0){
+    grps_map <- c(0, glm_fit$coefficients[ grp_cols ])
+    names(grps_map) <- paste0('grp',grp_vals)
+  } else {
+    grps_map <- NULL
+  }
+  return(list(
+    glm_fit = glm_fit,
+    fixed_effects_map = covs_map,
+    fixed_effects_grouping = grps_map
+  ))
+}
+
+
 #' Run TMB normalization
 #'
 #' @description Get the TMB normalization constant from random effects
@@ -66,11 +147,16 @@ run_sparsity_algorithm <- function(adfun, verbose=FALSE){
 #'   maximum value for any fixed effect
 #' @param limit_min [numeric, default -limit_max] If limits are set in the model,
 #'   minimum value of any fixed effect
-#' @param optimization_methods [char] Character vector naming optimization 
+#' @param optimization_methods [char] Character vector naming optimization
 #'   to try in optimx. The first method that converges (returns `convcode==0`)
 #'   will be returned.
 #' @param model_name [char, default "model"] name of the model
-#' @param verbose [boolean, default FALSE] Should this function return
+#' @param verbose [boolean, default FALSE] Should this function return logging
+#'   information about the stage of model fitting, including the outer optizimer
+#'   sampling? This will be somewhat long (>100 lines)
+#' @param inner_verbose [boolean, default FALSE] Should this function return
+#'   logging information about inner optimizer sampling? This can be useful for
+#'   debugging, but will show very verbose (>10k lines) output.
 #'
 #' @return list of two objects: obj (ADFunction object), and opt (optimized
 #'   nlminb object)
@@ -81,9 +167,9 @@ run_sparsity_algorithm <- function(adfun, verbose=FALSE){
 setup_run_tmb <- function(
   tmb_data_stack, params_list, tmb_random, tmb_map, DLL, tmb_outer_maxsteps,
   tmb_inner_maxsteps, run_symbolic_analysis=FALSE, normalize=FALSE,
-  set_limits=FALSE, limit_max=10, limit_min=-limit_max, 
-  optimization_methods = c('L-BFGS-B','nlminb','Rcgmin','spg','bobyqa','CG','Nelder-Mead'),
-  model_name="model", verbose=FALSE
+  set_limits=FALSE, limit_max=10, limit_min=-limit_max,
+  optimization_methods = c('nlminb','L-BFGS-B','Rcgmin','spg','bobyqa','CG','Nelder-Mead'),
+  model_name="model", verbose=FALSE, inner_verbose=FALSE
 ){
   # Helper function to send a message only if verbose
   vbmsg <- function(x) if(verbose) message(x)
@@ -115,10 +201,10 @@ setup_run_tmb <- function(
     random=tmb_random,
     map=tmb_map,
     DLL='covidemr',
-    silent=TRUE
+    silent=inner_verbose
   )
   obj$env$tracemgc <- as.integer(verbose)
-  obj$env$inner.control$trace <- 0
+  obj$env$inner.control$trace <- as.integer(inner_verbose)
   tictoc::toc()
   # Optionally run a normalization fix for models with large random effect sets
   if(normalize) obj <- normalize_adfun(adfun=obj, flag='flag', verbose=verbose)
@@ -140,7 +226,7 @@ setup_run_tmb <- function(
   # Try optimizing using a variety of algorithms (all fit in optimx)
   for(this_method in optimization_methods){
     message(glue("\n** OPTIMIZING USING METHOD {this_method} **"))
-    opt <- suppressWarnings(optimx(
+    opt <- optimx(
       par = obj$par,
       fn = function(x) as.numeric(obj$fn(x)),
       gr = obj$gr,
@@ -153,9 +239,10 @@ setup_run_tmb <- function(
         follow.on = FALSE,
         dowarn = as.integer(verbose),
         maxit = tmb_inner_maxsteps,
-        reltol = 1e-10
+        reltol = 1e-10,
+        starttests = FALSE
       )
-    ))
+    )
     if(opt$convcode == 0){
       message(glue("Optimization converged using method {this_method}!"))
       break()
