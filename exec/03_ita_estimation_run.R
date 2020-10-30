@@ -6,7 +6,7 @@
 ##
 ## -----------------------------------------------------------------------------
 
-
+library(argparse)
 library(data.table)
 library(sp)
 library(sf)
@@ -16,27 +16,35 @@ dev_fp <- '~/repos/covidemr/'
 devtools::load_all(dev_fp)
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
-## Settings
-## TODO: Convert to command line
-run_sex <- 'male'
-prepped_data_version <- '20201026'
-model_run_version <- '20201028'
-holdout <- 0
-use_covs <- c(
-  'intercept','tfr','unemp','socserv','tax_brackets','hc_access','elevation',
-  'temperature'
+## Load run-specific settings from command line
+ap <- argparse::ArgumentParser(
+  description='COVID Excess Mortality: Input data diagnostics script',
+  allow_abbrev=FALSE
 )
-use_Z_stwa <- FALSE
-use_Z_sta <- TRUE
-use_Z_fourier <- TRUE
-use_nugget <- FALSE
-fourier_levels <- 2
+ap$add_argument('--run-sex', type='character', help='Sex-specific model to run')
+ap$add_argument('--data-version', type='character', help='Prepped data version date')
+ap$add_argument('--model-version', type='character', help='Model run version date')
+ap$add_argument('--holdout', type='integer', default=0, help='Holdout number')
+ap$add_argument(
+  '--use-covs', type='character', nargs='+', help='Covariates to use (include intercept)'
+)
+ap$add_argument('--use-Z-stwa', help='Use space-time-week-age RE?', action='store_true')
+ap$add_argument('--use-Z-sta', help='Use space-time-age RE?', action='store_true')
+ap$add_argument('--use-Z-fourier', help='Use periodic-fit RE?', action='store_true')
+ap$add_argument('--use-nugget', help='Add a nugget?', action='store_true')
+ap$add_argument(
+  '--fourier-levels', help='Number of levels for Fourier analysis',
+  type='integer', default=2
+)
+args <- ap$parse_args(commandArgs(TRUE))
+message(str(args))
+use_covs <- args$use_covs # Shorten for convenience
 
 
 ## Load and prepare data -------------------------------------------------------
 
 # Helper functions for loading prepared data
-prep_dir <- file.path(config$paths$prepped_data, prepped_data_version)
+prep_dir <- file.path(config$paths$prepped_data, args$data_version)
 get_prep_fp <- function(ff) file.path(prep_dir, config$prepped_data_files[[ff]])
 
 prepped_data <- data.table::fread(get_prep_fp('full_data_rescaled'))
@@ -45,13 +53,12 @@ location_table <- data.table::fread(get_prep_fp('location_table'))
 adjmat <- readRDS(get_prep_fp('adjacency_matrix'))
 
 ## Subset data to sex being modeled; merge indices on prepared data
-template_dt <- template_dt[sex==run_sex, ]
+template_dt <- template_dt[sex==args$run_sex, ]
 template_dt[, idx_fourier := 0 ]
 
-prepped_data <- prepped_data[sex==run_sex, ]
+prepped_data <- prepped_data[sex==args$run_sex, ]
 # Set holdout IDs
 prepped_data[, idx_fourier := 0 ] # Alternate option: group by age
-prepped_data$idx_holdout <- 1
 
 # Subset to only input data for this model
 in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baseline==1), ]
@@ -61,7 +68,7 @@ in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baseline==1), ]
 
 # Define data stack
 data_stack <- list(
-  holdout = holdout,
+  holdout = args$holdout,
   y_i = in_data_final$deaths,
   n_i = in_data_final$pop,
   days_exp_i = in_data_final$observed_days,
@@ -73,11 +80,11 @@ data_stack <- list(
   idx_fourier = in_data_final$idx_fourier,
   idx_holdout = in_data_final$idx_holdout,
   loc_adj_mat = as(adjmat, 'dgTMatrix'),
-  use_Z_stwa = as.integer(use_Z_stwa),
-  use_Z_sta = as.integer(use_Z_sta),
-  use_Z_fourier = as.integer(use_Z_fourier),
-  use_nugget = as.integer(use_nugget),
-  harmonics_level = as.integer(fourier_levels)
+  use_Z_stwa = as.integer(args$use_Z_stwa),
+  use_Z_sta = as.integer(args$use_Z_sta),
+  use_Z_fourier = as.integer(args$use_Z_fourier),
+  use_nugget = as.integer(args$use_nugget),
+  harmonics_level = as.integer(args$fourier_levels)
 )
 
 
@@ -125,7 +132,7 @@ params_list <- list(
   Z_fourier = array(0.0,
     dim = c(
       max(in_data_final$idx_fourier) + 1,
-      2 * fourier_levels
+      2 * args$fourier_levels
     )
   ),
   # Unstructured random effect
@@ -137,29 +144,29 @@ tmb_map <- list()
 if(length(params_list$beta_ages) > 1){
   tmb_map$beta_ages <- as.factor(c(NA, 2:length(params_list$beta_ages)))
 }
-if(!use_Z_stwa){
+if(!args$use_Z_stwa){
   tmb_map$Z_stwa <- rep(as.factor(NA), length(params_list$Z_stwa))
   tmb_map$rho_week_trans <- as.factor(NA)
   tmb_map$log_sigma_week <- as.factor(NA)
 }
-if(!use_Z_sta) tmb_map$Z_sta <- rep(as.factor(NA), length(params_list$Z_sta))
-if(!use_Z_fourier) tmb_map$Z_fourier <- rep(as.factor(NA), length(params_list$Z_fourier))
-if(!use_nugget){
+if(!args$use_Z_sta) tmb_map$Z_sta <- rep(as.factor(NA), length(params_list$Z_sta))
+if(!args$use_Z_fourier) tmb_map$Z_fourier <- rep(as.factor(NA), length(params_list$Z_fourier))
+if(!args$use_nugget){
   tmb_map$nugget <- rep(as.factor(NA), length(params_list$nugget))
   tmb_map$log_sigma_nugget <- as.factor(NA)
 }
 
 # Set random effects
 tmb_random <- character(0)
-if(use_nugget) tmb_random <- c(tmb_random, 'nugget')
-if(use_Z_stwa) tmb_random <- c(tmb_random, 'Z_stwa')
-if(use_Z_sta) tmb_random <- c(tmb_random, 'Z_sta')
-if(use_Z_fourier) tmb_random <- c(tmb_random, 'Z_fourier')
+if(args$use_nugget) tmb_random <- c(tmb_random, 'nugget')
+if(args$use_Z_stwa) tmb_random <- c(tmb_random, 'Z_stwa')
+if(args$use_Z_sta) tmb_random <- c(tmb_random, 'Z_sta')
+if(args$use_Z_fourier) tmb_random <- c(tmb_random, 'Z_fourier')
 
 
 ## Run modeling ----------------------------------------------------------------
 
-model_fit <- ocvidemr::setup_run_tmb(
+model_fit <- covidemr::setup_run_tmb(
   tmb_data_stack=data_stack,
   params_list=params_list,
   tmb_random=tmb_random,
@@ -167,10 +174,11 @@ model_fit <- ocvidemr::setup_run_tmb(
   normalize = TRUE, run_symbolic_analysis = TRUE,
   tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
   model_name="ITA deaths model",
-  verbose=TRUE,
+  verbose=FALSE, inner_verbose=FALSE,
   optimization_methods = c('nlminb', 'L-BFGS-B')
 )
 
+message("Getting sdreport and joint precision matrix...")
 sdrep <- sdreport(model_fit$obj, bias.correct = TRUE, getJointPrecision = TRUE)
 
 
@@ -185,7 +193,7 @@ for(ii in 1:length(postest_list)){
     num_draws = min(50, config$num_draws - (ii - 1) * 50),
     covariate_names = use_covs,
     template_dt = template_dt,
-    fourier_harmonics_level = fourier_levels
+    fourier_harmonics_level = args$fourier_levels
   )
 }
 cbindlist <- function(a_list) setDT(unlist(a_list, recursive=FALSE))
@@ -200,32 +208,44 @@ rm(postest_list)
 # Summarize draws
 pred_summary <- cbind(template_dt, summarize_draws(pred_draws))
 
-# Generate draws of excess mortality (true deaths - baseline)
-excess_draws_list <- covidemr::get_excess_death_draws(
-  template_dt = template_dt,
-  baseline_draws = pred_draws,
-  death_data = prepped_data[in_baseline==0,]
-)
-excess_index <- excess_draws_list$obs_deaths
-excess_draws <- excess_draws_list$excess_draws
-proportion_draws <- excess_draws_list$proportion_draws
-# Summarize draws
-prop_summ <- summarize_draws(proportion_draws)
-names(prop_summ) <- paste0('prop_',names(prop_summ))
-excess_summary <- cbind(excess_index, summarize_draws(excess_draws), prop_summ)
-
+if(args$holdout == 0){
+  # For in-sample runs, generate additional predictive estimates:
+  # Draws of excess mortality (true deaths - baseline)
+  excess_draws_list <- covidemr::get_excess_death_draws(
+    template_dt = template_dt,
+    baseline_draws = pred_draws,
+    death_data = prepped_data[in_baseline==0,]
+  )
+  excess_index <- excess_draws_list$obs_deaths
+  excess_draws <- excess_draws_list$excess_draws
+  proportion_draws <- excess_draws_list$proportion_draws
+  # Summarize draws
+  prop_summ <- summarize_draws(proportion_draws)
+  names(prop_summ) <- paste0('prop_',names(prop_summ))
+  excess_summary <- cbind(excess_index, summarize_draws(excess_draws), prop_summ)
+} else {
+  # FOR OUT-OF-SAMPLE RUNS ONLY: Keep only the OOS data subset
+  pred_sub_idx <- which(pred_summary$idx_holdout == args$holdout)
+  pred_draws_sub <- pred_draws[ pred_sub_idx , ]
+}
 
 
 ## Save outputs ----------------------------------------------------------------
 
-out_file_stub <- sprintf("%s_holdout%i", run_sex, holdout)
-out_dir <- file.path(config$paths$model_results, model_run_version)
+out_file_stub <- sprintf("%s_holdout%i", args$run_sex, args$holdout)
+out_dir <- file.path(config$paths$model_results, args$model_version)
 dir.create(out_dir, showWarnings = FALSE)
 
 ## Save all model output files
 model_results_dir <- config$path$model_results
 
-for(obj_str in names(config$results_files)){
+if(args$holdout != 0){
+  save_objs <- c('model_fit','pred_draws_sub')
+} else {
+  save_objs <- names(config$results_files)
+}
+
+for(obj_str in save_objs){
   # Parse output file
   out_fp <- glue::glue(config$results_files[[obj_str]])
   message(glue::glue("Saving {obj_str} to {out_fp}"))

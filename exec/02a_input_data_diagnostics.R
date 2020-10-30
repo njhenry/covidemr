@@ -9,16 +9,25 @@
 ## Load required packages and inputs
 
 # library(covidemr)
+library(argparse)
 library(data.table)
 library(knitr)
 library(sf)
+
 # DEVELOPMENT: rebuild library
 dev_fp <- '~/repos/covidemr/'
 devtools::load_all(dev_fp)
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
-## TODO: Load using command line argument
-prepped_data_version <- '20201026'
+## Get data version from command line
+parser <- argparse::ArgumentParser(
+  description='COVID Excess Mortality: Input data diagnostics script',
+  allow_abbrev=FALSE
+)
+parser$add_argument('--data-version', type='character', help='Prepped data version')
+args <- parser$parse_args(commandArgs(TRUE))
+prepped_data_version <- args$data_version
+
 
 # Helper functions to create a filepath for a particular prepped data object or
 #  diagnostic filepath

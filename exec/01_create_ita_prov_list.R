@@ -6,19 +6,24 @@
 ##
 ## -----------------------------------------------------------------------------
 
-## Load packages
-
+# Load packages
 library(data.table)
 
 # DEVELOPMENT: load package functions and config
 dev_fp <- '~/repos/covidemr/'
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
-## TODO: Load using command line argument
-prepped_data_version <- '20201026'
+## Load input data version from command line
+ap <- argparse::ArgumentParser(
+  description='COVID Excess Mortality: Create input locations list',
+  allow_abbrev=FALSE
+)
+ap$add_argument('--data-version', type='character', help='Prepped data version date')
+args <- ap$parse_args(commandArgs(TRUE))
+prepped_data_version <- args$data_version
 
 
-## Create standard location list
+## Create standard location list -----------------------------------------------
 
 prov_table <- foreign::read.dbf(gsub('.shp$', '.dbf', config$paths$shp_generalized))
 prov_table <- prov_table[, c('COD_REG','COD_PROV','DEN_UTS','SIGLA')]
@@ -51,7 +56,6 @@ if(nrow(prov_table_full) != 107) stop("ISSUE: Wrong number of provinces!")
 prov_table_full <- prov_table_full[order(location_code)]
 
 ## Create output directory and save
-
 out_dir <- file.path(config$paths$prepped_data, prepped_data_version)
 dir.create(out_dir, showWarnings=FALSE)
 

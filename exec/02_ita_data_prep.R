@@ -18,7 +18,13 @@ devtools::load_all(dev_fp)
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## TODO: Load using command line argument
-prepped_data_version <- '20201026'
+parser <- argparse::ArgumentParser(
+  description='COVID Excess Mortality: Pre-modeling data prep script',
+  allow_abbrev=FALSE
+)
+parser$add_argument('--data-version', type='character', help='Prepped data version')
+args <- parser$parse_args(commandArgs(TRUE))
+prepped_data_version <- args$data_version
 
 # Helper function to create a filepath for a particular prepped data object
 prep_dir <- file.path(config$paths$prepped_data, prepped_data_version)
