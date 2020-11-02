@@ -317,3 +317,56 @@ summarize_draws <- function(draws){
 }
 
 
+#' Aggregate data and draws
+#'
+#' @description Aggregate the draws (rates) and the data (population and deaths)
+#'   by a set of grouping identifiers
+#'
+#' @param in_data Input data.table, including draws (in rate space), the
+#'   numerator and denominator (in count space), and any grouping fields
+#' @param num_field Field containing the data numerator (e.g. deaths)
+#' @param denom_field Field containing the data denominator (e.g. population)
+#' @param draw_fields Character vector of fields containing predictive draws, in
+#'   rate space (e.g. mortality rates)
+#' @param group_fields [optional, default NULL] Character vector containing all
+#'   fields for grouping observations during the aggregation. If this field is
+#'   empty, all data will be aggregated to a single row and returned with no
+#'   identifiers
+#'
+#' @import data.table
+#' @export
+aggregate_data_and_draws <- function(
+  in_data, num_field, denom_field, draw_fields, group_fields = NULL
+){
+  # Ensure that there are no missing columns
+  missing_cols <- setdiff(
+    colnames(in_data), c(num_field, denom_field, draw_fields, group_fields)
+  )
+  if(length(missing_cols) > 0){
+    stop("Missing fields for aggregation:" , paste(missing_cols, collapse=', '))
+  }
+  to_agg <- data.table::copy(in_data)
+  # If no grouping field is specified, make a dummy grouping field
+  if(length(group_fields) == 0){
+    to_agg[, agg_dummy := 1 ]
+    group_by <- 'agg_dummy'
+  } else {
+    group_by <- group_fields
+  }
+  # Create dummy numerator and denominator columns for ease of aggregation
+  to_agg[, dummy_num := get(num_field) ]
+  to_agg[, dummy_denom := get(denom_field) ]
+  # Run aggregation
+  agg_data <- to_agg[, c(
+      list(denom_field = sum(denom_field), num_field = sum(num_field)),
+      lapply(.SD, function(x) weighted.mean(x, w = denom_field))
+    ),
+    .SDcols = draw_fields,
+    by = group_by
+  ]
+  # Clean up and return
+  if(num_field != 'dummy_num') setnames(agg_data, 'dummy_num', num_field)
+  if(denom_field != 'dummy_denom') setnames(agg_data, 'dummy_denom', denom_field)
+  if(length(group_fields) == 0) agg_data[, agg_dummy := NULL ]
+  return(agg_data)
+}
