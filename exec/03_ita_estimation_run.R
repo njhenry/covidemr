@@ -36,6 +36,10 @@ ap$add_argument(
   '--fourier-levels', help='Number of levels for Fourier analysis',
   type='integer', default=2
 )
+ap$add_argument(
+  '--fourier-groups', type='character', nargs='*', default=NULL,
+  help='Grouping fields for seasonality (default one group for all data)'
+)
 args <- ap$parse_args(commandArgs(TRUE))
 message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
@@ -54,7 +58,9 @@ adjmat <- readRDS(get_prep_fp('adjacency_matrix'))
 
 ## Subset data to sex being modeled; merge indices on prepared data
 template_dt <- template_dt[sex==args$run_sex, ]
-template_dt[, idx_fourier := 0 ]
+template_dt$idx_fourier <- assign_seasonality_ids(
+  input_data = template_dt, grouping_fields = args$fourier_groups
+)
 
 prepped_data <- prepped_data[sex==args$run_sex, ]
 # Set holdout IDs
@@ -226,7 +232,7 @@ if(args$holdout == 0){
 } else {
   # FOR OUT-OF-SAMPLE RUNS ONLY: Keep only the OOS data subset
   pred_sub_idx <- which(pred_summary$idx_holdout == args$holdout)
-  pred_draws_sub <- pred_draws[ pred_sub_idx , ]
+  pred_draws <- pred_draws[ pred_sub_idx , ]
 }
 
 
@@ -238,9 +244,20 @@ dir.create(out_dir, showWarnings = FALSE)
 
 ## Save all model output files
 model_results_dir <- config$path$model_results
+model_run_version <- args$model_version
+run_sex <- args$run_sex
+holdout <- args$holdout
 
-if(args$holdout != 0){
-  save_objs <- c('model_fit','pred_draws_sub')
+# Always write out args and config
+yaml::write_yaml(args, file = glue::glue(
+  '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_model_args.yaml'
+))
+yaml::write_yaml(config, file = glue::glue(
+  '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_model_config.yaml'
+))
+
+if(holdout != 0){
+  save_objs <- c('model_fit','pred_draws')
 } else {
   save_objs <- names(config$results_files)
 }

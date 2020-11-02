@@ -1,3 +1,53 @@
+
+#' Assign seasonality grouping IDs
+#'
+#' @description Create a vector that assigns a (zero-indexed) seasonality
+#'   grouping ID based on other categories in the data. If no categories are
+#'   assigned, all rows get the same seasonality grouping ID (0). If categories
+#'   are based on other ID fields, then a group is assigned to every unique
+#'   combination of values in those fields. For example, if grouings were
+#'   assigned based on the "age" and "location" fields, and the data contained
+#'   four age groupings and 10 unique locations, then 20 unique seasonality
+#'   groupings would be assigned.
+#'
+#' @param input_data Data.table of the full input dataset. Must contain fields
+#'   for any grouping categories that are assigned
+#' @param grouping_fields [optional, default NULL] character vector listing any
+#'   fields in the dataset that should be used to create unique seasonality
+#'   groups
+#'
+#' @return integer vector with the same number of rows as `input_data` assigning
+#'   holdout IDs.
+#'
+#' @import data.table
+#' @export
+assign_seasonality_ids <- function(input_data, grouping_fields = NULL){
+
+  # Check for missing fields
+  missing <- setdiff(grouping_fields, names(input_data))
+  if(length(missing) > 0) stop("Missing fields: ", paste(missing, collapse=', '))
+
+  # Case of no groupings: Assign all zeroes
+  if(length(grouping_fields) == 0){
+    return(rep(0, nrow(input_data)))
+  }
+
+  # Case of groupings: create a grouping data.table and merge it into the data
+  to_cj <- lapply(grouping_fields, function(fld) sort(unique(input_data[[fld]])))
+  names(to_cj) <- grouping_fields
+  holdout_id_dt <- do.call('CJ', to_cj)
+  # Add holdout ID, zero-indexed
+  holdout_id_dt[, idx_season := .I - 1 ]
+  # Merge back onto dataset
+  templ_dt <- copy(input_data)[, ..grouping_fields]
+  templ_dt[holdout_id_dt, idx_season := idx_season, on = grouping_fields]
+
+  # Check that the field is the correct length and return
+  if(length(templ_dt$idx_season) != nrow(input_data)) stop("Holdout merge issue")
+  return(templ_dt$idx_season)
+}
+
+
 #' Get Maximum a Priori (MAP) parameter estimates
 #'
 #' @description Find the Maximum a Priori (MAP) estimates for fixed effect
