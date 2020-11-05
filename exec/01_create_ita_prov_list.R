@@ -51,13 +51,33 @@ old_provs <- c('ITG2C','ITG2B','ITG2A','ITG29')
 pop_sub <- pop_sub[!(icode %in% old_provs), ]
 
 # Merge tables to add code
-prov_table_full <- merge(prov_table, pop_sub, by='location_name', all=TRUE)
-if(nrow(prov_table_full) != 107) stop("ISSUE: Wrong number of provinces!")
+prov_table_with_icode <- merge(prov_table, pop_sub, by='location_name', all=TRUE)
+if(nrow(prov_table_with_icode) != 107) stop("ISSUE: Wrong number of provinces!")
+
+## Prepare and merge on region and macroregion identifiers
+region_codes <- unique(data.table::fread(
+  config$paths$raw_location_codes, na.strings = c("", "n.d.")
+)[, c(9, 10, 1, 11, 15)])
+colnames(region_codes) <- c(
+  'macroregion_code', 'macroregion_name', 'region_code', 'region_name', 'abbrev'
+)
+# Replace some region names with special characters
+region_codes[region_name=="Valle d'Aosta/Vall\xe9e d'Aoste", region_name := "Valle d'Aosta"]
+region_codes[region_name=="Trentino-Alto Adige/S\xfcdtirol", region_name := "Trentino-Alto Adige"]
+# Merge onto province-level data
+prov_table_full <- merge(
+  x = region_codes, y = prov_table_with_icode, by = c('region_code', 'abbrev'), all=TRUE
+)
+if(nrow(prov_table_full) != 107){
+  stop("ISSUE: Wrong number of provinces after region merge!")
+}
 prov_table_full <- prov_table_full[order(location_code)]
 
-## Create output directory and save
+
+## Create output directory and save --------------------------------------------
+
 out_dir <- file.path(config$paths$prepped_data, prepped_data_version)
 dir.create(out_dir, showWarnings=FALSE)
 
 out_fp <- file.path(out_dir, config$prepped_data_files$location_table)
-write.csv(prov_table_full, file=out_fp, row.names=FALSE)
+data.table::fwrite(prov_table_full, file=out_fp)
