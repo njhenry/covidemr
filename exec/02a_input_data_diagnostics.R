@@ -38,7 +38,7 @@ get_prep_fp <- function(ff) file.path(prep_dir, config$prepped_data_files[[ff]])
 get_diag_fp <- function(ff) file.path(diag_dif, ff)
 
 ## Load input data
-location_table <- data.table::fread(get_prep_fp('location_table'))
+location_table <- data.table::fread(get_prep_fp('location_table'), na.strings='')
 age_groups <- create_age_groups(config$age_cutoffs)
 polys_sf <- readRDS(get_prep_fp('shapefile_sf'))
 covars_prepped <- readRDS(get_prep_fp('covars_list'))

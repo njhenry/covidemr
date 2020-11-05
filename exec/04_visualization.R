@@ -47,7 +47,7 @@ shp_sf <- readRDS(file.path(
 
 ## Make maps showing greatest weekly excess across all weeks -------------------
 
-viz_dir <- file.path(model_results_dir, prepped_data_version, 'viz')
+viz_dir <- file.path(config$paths$prepped_data, prepped_data_version, 'viz')
 dir.create(viz_dir, showWarnings = FALSE)
 
 ita_viz <- function(

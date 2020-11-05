@@ -22,7 +22,7 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## Load run-specific settings from command line
 ap <- argparse::ArgumentParser(
-  description='COVID Excess Mortality: Input data diagnostics script',
+  description='COVID Excess Mortality: Model fitting script',
   allow_abbrev=FALSE
 )
 ap$add_argument('--run-sex', type='character', help='Sex-specific model to run')
@@ -67,7 +67,7 @@ get_prep_fp <- function(ff) file.path(prep_dir, config$prepped_data_files[[ff]])
 prepped_data <- data.table::fread(get_prep_fp('full_data_rescaled'))
 template_dt <- data.table::fread(get_prep_fp('template'))
 covar_scaling_factors <- data.table::fread(get_prep_fp('covar_scaling_factors'))
-location_table <- data.table::fread(get_prep_fp('location_table'))
+location_table <- data.table::fread(get_prep_fp('location_table'), na.strings='')
 adjmat <- readRDS(get_prep_fp('adjacency_matrix'))
 
 ## Subset data to sex being modeled; merge indices on prepared data

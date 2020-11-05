@@ -31,7 +31,7 @@ prep_dir <- file.path(config$paths$prepped_data, prepped_data_version)
 get_prep_fp <- function(ff) file.path(prep_dir, config$prepped_data_files[[ff]])
 
 # Load prepared location table
-location_table <- data.table::fread(get_prep_fp('location_table'))
+location_table <- data.table::fread(get_prep_fp('location_table'), na.strings="")
 # Get age groups
 age_groups <- create_age_groups(config$age_cutoffs)
 # Get the final observed week of data in 2020
