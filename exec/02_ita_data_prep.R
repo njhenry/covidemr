@@ -34,6 +34,8 @@ get_prep_fp <- function(ff) file.path(prep_dir, config$prepped_data_files[[ff]])
 location_table <- data.table::fread(get_prep_fp('location_table'))
 # Get age groups
 age_groups <- create_age_groups(config$age_cutoffs)
+# Get the final observed week of data in 2020
+final_obs_week <- covidemr::week_id_from_date(config$final_obs_date)
 
 
 ## Load and format deaths data -------------------------------------------------
@@ -58,6 +60,48 @@ pop_prepped <- covidemr::ita_prepare_pop(pop_raw, age_cutoffs=config$age_cutoffs
 
 # Save to file
 data.table::fwrite(pop_prepped, file = get_prep_fp('population'))
+
+
+## Load and format COVID deaths by region --------------------------------------
+
+# COVID deaths will be assigned to region codes
+region_table <- unique(
+  location_table[, .(macroregion_code, macroregion_name, region_code, region_name)]
+)
+keep_cols <- c('location_name', 'date', 'deaths_mean')
+covid_deaths_raw <- fread(config$paths$raw_covid_deaths)[, ..keep_cols]
+
+## Formatting:
+# Combine the provinces of Bolzano and Trento into Trentino-Alto Adige
+taa_locs <- c("Provincia autonoma di Trento", "Provincia autonoma di Bolzano")
+covid_deaths_raw[location_name %in% taa_locs, location_name := "Trentino-Alto Adige"]
+setnames(covid_deaths_raw, 'location_name', 'region_name')
+# Keep only Italian regions
+covid_deaths_sub <- covid_deaths_raw[region_name %in% region_table$region_name, ]
+if(covid_deaths_sub[, uniqueN(region_name)] != 20) stop("Issue with Italy subset")
+# Format the date field and convert to weeks
+covid_deaths_sub <- covid_deaths_sub[, date := as.Date(date)
+  ][, in_baseline := as.numeric(date >= config$first_death_date)
+  ][, week := covidemr::week_id_from_date(date)
+  ][ date <= config$final_obs_date, ]
+# Aggregate by region-week
+covid_deaths_agg <- covid_deaths_sub[,
+  .(covid_deaths = sum(deaths_mean, na.rm=T), observed_days = uniqueN(date)),
+  by = .(region_name, week, in_baseline)
+]
+
+# Merge onto region identifiers
+covid_deaths_full <- merge(
+  x = covid_deaths_agg, y = region_table, by = c('region_name'), all.x = TRUE
+)
+if(sum(covid_deaths_agg$covid_deaths) != sum(covid_deaths_full$covid_deaths) |
+   any(is.na(covid_deaths_full$covid_deaths))
+  ){
+  stop("Bad merge onto COVID deaths")
+}
+
+# Save to file
+data.table::fwrite(covid_deaths_full, get_prep_fp('covid_deaths'))
 
 
 ## Load spatial data: polygons, adjacency matrix, population raster ------------
@@ -107,7 +151,8 @@ covars_prepped <- lapply(covar_names, function(covar_name){
     location_table = data.table::copy(location_table),
     pop_raster = pop_raster,
     polys_sf = polys_list$shp_sf,
-    projection = config$projection
+    projection = config$projection,
+    final_obs_week = final_obs_week
   )
 })
 names(covars_prepped) <- covar_names
@@ -133,7 +178,7 @@ for(covar_name in covar_names){
     by = covars_prepped[[covar_name]]$covar_indices,
     all.x = TRUE
   )
-  if(any(is.na(template_dt[(year < 2020) | (week <= 26)][[covar_name]]))){
+  if(any(is.na(template_dt[(year < 2020) | (week <= final_obs_week)][[covar_name]]))){
     stop("Missing values for covar ",covar_name," in template dataset")
   }
 }

@@ -14,14 +14,18 @@
 echo "======================================================================" &&
 echo "" &&
 echo "*** Data will be saved to $1 ***" &&
-cd $1 && mkdir shp && mkdir deaths && mkdir pop_raster && mkdir covars/raster && cd shp &&
+cd $1 && mkdir shp && mkdir deaths && mkdir pop_raster && mkdir covars/raster && mkdir covid_deaths &&
+cd shp &&
 wget http://www.istat.it/storage/cartografia/confini_amministrativi/non_generalizzati/Limiti01012020.zip &&
-unzip Limiti01012020.zip &&
 wget http://www.istat.it/storage/cartografia/confini_amministrativi/generalizzati/Limiti01012020_g.zip &&
-unzip Limiti01012020_g.zip &&
+wget https://www.istat.it/storage/codici-unita-amministrative/Elenco-codici-statistici-e-denominazioni-delle-unita-territoriali.zip\
+  -O location_codes.zip &&
+unzip Limiti01012020.zip && unzip Limiti01012020_g.zip && unzip location_codes.zip &&
+cp Elenco*/*.csv ./location_codes.csv &&
+rm -r Elenco*/ && rm location_codes.zip && rm Limiti01012020.zip && rm Limiti01012020_g.zip &&
 echo "***   - Detailed and generalized shapefiles saved to $1/shp ***" &&
 cd ../deaths &&
-wget https://www.istat.it/it/files//2020/03/Dataset-decessi-comunali-giornalieri-e-tracciato-record_al30giugno.zip
+wget https://www.istat.it/it/files//2020/03/Dataset-decessi-comunali-giornalieri-e-tracciato-record_al30giugno.zip &&
 unzip Dataset-decessi-comunali-giornalieri-e-tracciato-record_al30giugno.zip &&
 echo "***   - Deaths saved to $1/deaths ***" &&
 echo "*** Downloading population raster: ***" &&
@@ -33,6 +37,11 @@ wget $WP_BASE/2017/ITA/ita_ppp_2017_1km_Aggregated.tif -O ita_2017.tif --no-pass
 wget $WP_BASE/2018/ITA/ita_ppp_2018_1km_Aggregated.tif -O ita_2018.tif --no-passive &&
 wget $WP_BASE/2019/ITA/ita_ppp_2019_1km_Aggregated.tif -O ita_2019.tif --no-passive &&
 wget $WP_BASE/2020/ITA/ita_ppp_2020_1km_Aggregated.tif -O ita_2020.tif --no-passive &&
+echo "*** Downloading COVID deaths from healthdata.org ***"
+cd ../covid_deaths &&
+wget https://ihmecovid19storage.blob.core.windows.net/archive/2020-10-15/ihme-covid19.zip &&
+unzip ihme-covid19.zip &&
+mv 2020_*/* ./ && rm -r 2020_* && rm ihme-covid19.zip &&
 echo "*** Copying Meteostat API key to date-specific folder ***" &&
 cd ../covars/ &&
 cp ../../meteostat_api_key.txt ./ &&

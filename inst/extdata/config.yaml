@@ -2,6 +2,7 @@ paths:
   raw_pop_dir: '~/temp_data/ita_emr/raw_data/20201026/pop_all_by_province.csv'
   pop_raster_layers: '~/temp_data/ita_emr/raw_data/20201026/pop_raster/ita_{year}.tif'
   raw_deaths: '~/temp_data/ita_emr/raw_data/20201026/deaths/comuni_giornaliero_30giugno.csv'
+  raw_covid_deaths: '~/temp_data/ita_emr/raw_data/20201026/covid_deaths/Reference_hospitalization_all_locs.csv'
   raw_covars:
     tfr: '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_tfr_2015_2018_province.csv'
     unemp: '~/temp_data/ita_emr/raw_data/20201026/covars/COVAR_unemployment_2015_2019_province.csv'
@@ -16,6 +17,7 @@ paths:
     temperature: '~/temp_data/ita_emr/raw_data/20201026/covars/meteostat_api_key.txt' # From dev.meteostat.net
   shp_detailed: '~/temp_data/ita_emr/raw_data/20201026/shp/Limiti01012020/ProvCM01012020/ProvCM01012020_WGS84.shp'
   shp_generalized: '~/temp_data/ita_emr/raw_data/20201026/shp/Limiti01012020_g/ProvCM01012020_g/ProvCM01012020_g_WGS84.shp'
+  raw_location_codes: '~/temp_data/ita_emr/raw_data/20201026/shp/location_codes.csv'
   prepped_data: '~/temp_data/ita_emr/prepped_data'
   model_results: '~/temp_data/ita_emr/model_results'
 prepped_data_files:
@@ -23,6 +25,7 @@ prepped_data_files:
   population: 'prepped_pop.csv'
   pop_raster: 'pop_raster.tif'
   deaths: 'prepped_deaths.csv'
+  covid_deaths: 'prepped_covid_deaths.csv'
   full_data: 'prepped_data_full.csv'
   full_data_rescaled: 'prepped_data_full_rescaled_covariates.csv'
   covars_list: 'prepared_covariates_list.RDS'
@@ -49,6 +52,7 @@ model_week_range: [1, 52]
 num_draws: 250
 projection: "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs"
 first_death_date: '2020-03-01' # In YYYY-MM-DD format
+final_obs_date: '2020-06-30' # In YYYY-MM-DD format
 pop_identifiers: ['age_group_code','sex','year','location_code']
 death_identifiers: ['age_group_code','sex','year','week','location_code']
 encoding: 'Latin-1'
