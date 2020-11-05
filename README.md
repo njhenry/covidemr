@@ -11,11 +11,12 @@ from IStat, the Italian Statistical Authority.
 
 IStat has periodically released detailed tabulations of all-cause mortality by
 municipality to help explore the effects of COVID on mortality. I accessed the
-[COVID mortality web page](https://www.istat.it/it/archivio/240401) on August 18,
+[COVID mortality web page](https://www.istat.it/it/archivio/240401) on November 4,
 2020 and downloaded the "Dataset con i decessi giornalieri" (Dataset with daily
-deaths) which had last been updated on August 10, 2020. Direct link to the
-mortality dataset as of August 18, 2020, updated through June 30:
-https://www.istat.it/it/files//2020/03/Dataset-decessi-comunali-giornalieri-e-tracciato-record_al30giugno.zip
+deaths) which had last been updated on October 22, 2020. Direct link to the
+mortality dataset as of November 4, 2020, with full accounting of deaths for all
+Italian municipalities through August 31:
+https://www.istat.it/it/files//2020/03/Dataset-decessi-comunali-giornalieri-e-tracciato-record_22ottobre2020.zip
 
 ### Population
 

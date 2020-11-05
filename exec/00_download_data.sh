@@ -25,8 +25,9 @@ cp Elenco*/*.csv ./location_codes.csv &&
 rm -r Elenco*/ && rm location_codes.zip && rm Limiti01012020.zip && rm Limiti01012020_g.zip &&
 echo "***   - Detailed and generalized shapefiles saved to $1/shp ***" &&
 cd ../deaths &&
-wget https://www.istat.it/it/files//2020/03/Dataset-decessi-comunali-giornalieri-e-tracciato-record_al30giugno.zip &&
-unzip Dataset-decessi-comunali-giornalieri-e-tracciato-record_al30giugno.zip &&
+wget https://www.istat.it/it/files//2020/03/Dataset-decessi-comunali-giornalieri-e-tracciato-record_22ottobre2020.zip\
+  -O daily_deaths.zip &&
+unzip daily_deaths.zip &&
 echo "***   - Deaths saved to $1/deaths ***" &&
 echo "*** Downloading population raster: ***" &&
 cd ../pop_raster &&
