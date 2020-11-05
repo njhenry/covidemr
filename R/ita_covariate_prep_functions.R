@@ -17,6 +17,8 @@
 #' @param polys_sf [optional] Polygon boundaries
 #' @param projection [optional] Character vector giving the proj4 CRS
 #'   definition. Example: "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs"
+#' @param final_obs_week [optional] ID for the final observed week in 2020,
+#'   formatted as an integer between 1 and 52 inclusive.
 #'
 #' @return A list of two items:
 #'   - "prepped_covar": data.table containing the prepped covariate
@@ -29,7 +31,7 @@
 #' @export
 ita_prepare_covariate <- function(
   covar_name, covar_fp, model_years, location_table, pop_raster = NULL,
-  polys_sf = NULL, projection = NULL
+  polys_sf = NULL, projection = NULL, final_obs_week = NULL
 ){
   # Check that an appropriate covariate function exists
   covar_func <- get_covar_prep_function(covar_name)
@@ -43,7 +45,8 @@ ita_prepare_covariate <- function(
       location_table = location_table,
       pop_raster = pop_raster,
       polys_sf = polys_sf,
-      projection = projection
+      projection = projection,
+      final_obs_week = final_obs_week
     )[names(formals(covar_func))]
   )
   # Check that output is valid
@@ -639,7 +642,9 @@ ita_temperature_query_api <- function(
 #' @param pop_raster [optional] Population rasterBrick object, with one layer
 #'   per modeling year. Only used to prepare raster covariates, default NULL.
 #' @param polys_sf [optional] Polygon boundaries
-#''
+#' @param final_obs_week ID for the final observed week in 2020, formatted as an
+#'   integer between 1 and 52 inclusive.
+#'
 #' @return A list of two items:
 #'   - "prepped_covar": data.table containing the prepped covariate
 #'   - "covar_indices": Vector of identifiers that should be used to merge onto
@@ -650,7 +655,7 @@ ita_temperature_query_api <- function(
 #' @import data.table raster
 #' @export
 ita_prepare_covar_temperature <- function(
-  covar_fp, model_years, location_table, pop_raster, polys_sf
+  covar_fp, model_years, location_table, pop_raster, polys_sf, final_obs_week
 ){
   ## Find the pixel with the highest population in each province
   ## The API will be queried at these points
@@ -680,8 +685,7 @@ ita_prepare_covar_temperature <- function(
   # Aggregate temperature from days to weeks
   temp_weekly <- raw_temp_data[, date := as.Date(date, format = '%Y-%m-%d')
     ][, year := as.integer(strftime(date, format='%Y'))
-    ][, week := as.integer(ceiling(as.numeric(strftime(date, format='%j'))/7))
-    ][ week > 52, week := 52
+    ][, week := week_id_from_date(date)
     ][, .(tavg = mean(tavg, na.rm=T)), by=.(location_code, point_id, year, week)]
 
   # Merge on a template to ensure that all points, weeks, and years are included
@@ -698,8 +702,8 @@ ita_prepare_covar_temperature <- function(
   temp_weekly <- data.table::merge.data.table(
     x = template, y = temp_weekly, by = names(template), all.x=TRUE
   )[order(location_code, point_id, year, week)]
-  # Subset to only included weeks (up through 2020 week 26)
-  temp_weekly <- temp_weekly[(year < 2020) | (week <= 26), ]
+  # Subset to only included weeks
+  temp_weekly <- temp_weekly[(year < 2020) | (week <= final_obs_week), ]
 
   # For small gaps (less than 4 weeks), linearly interpolate available data
   num_na_start <- sum(is.na(temp_weekly$tavg))

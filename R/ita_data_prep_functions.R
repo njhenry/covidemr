@@ -43,6 +43,40 @@ ita_read_istat_csv <- function(fp){
   data.table::fread(fp, na.strings=c("","NA","n.d."))
 }
 
+
+#' Get week ID from date
+#'
+#' @description Given a text representation of a date, get the 1-indexed ID for
+#'   week of the year associated with that date. Example: '2020-01-01' -> 1
+#'
+#' @param date String representation of a date (singleton or vector). Can also
+#'   be an object or vector of type Date, in which case it will not be converted
+#' @param tryFormats [optional] Formats to try when converting the string
+#'   representation of a date into a Date object. Defaults to the default
+#'   formats tried by `as.Date()`, "%Y-%m-%d" and "%Y/%m/%d". Not used if the
+#'   `date` parameter is already of type Date
+#'
+#' @return integer vector giving week of the year
+#'
+#' @export
+week_id_from_date <- function(date, tryFormats = c("%Y-%m-%d","%Y/%m/%d")){
+  # Type checking and conversion to date
+  if(!any(class(date) %in% c('Date','character'))){
+    stop("Parameter 'date' must be either a Date or character-type vector")
+  }
+  if('character' %in% class(date)){
+    date <- as.Date(date, tryFormats = tryFormats)
+  }
+  # Convert from date into week
+  week_ids <- as.integer(ceiling(
+    as.numeric(strftime(date, format='%j')) / 7
+  ))
+  # Set days 365 and 366 to week 52 to avoid a stub week
+  week_ids[ week_ids > 52 ] <- 52
+  return(week_ids)
+}
+
+
 #' Prepare a single year of death data for Italy
 #'
 #' @description Prepare a single year of death data for Italy. This function is
@@ -105,9 +139,7 @@ ita_prepare_deaths_single_year <- function(
     format = '%Y-%m-%d'
   )]
   # Weeks are defined as starting on January 1st (Jan 8 starts week 2, etc.)
-  # Set days 365 and 366 to week 52 to avoid a stub week
-  deaths_long[, week := as.integer(ceiling(as.numeric(strftime(date_full, format='%j') ) / 7))]
-  deaths_long[ week > 52, week := 52]
+  deaths_long[, week := week_id_from_date(date_full) ]
 
   # Cut at the day of the first COVID death
   deaths_long[, in_baseline := as.integer(date_full < first_covid_death_date) ]
@@ -126,8 +158,7 @@ ita_prepare_deaths_single_year <- function(
   ))
   days_in_week <- days_in_week[ date_full <= max(na.omit(deaths_long$date_full)), ]
   days_in_week[, year := this_year ]
-  days_in_week[, week := as.integer(ceiling(as.numeric(strftime(date_full, format='%j') ) / 7))]
-  days_in_week[ week > 52, week := 52]
+  days_in_week[, week := week_id_from_date(date_full) ]
   days_in_week[, in_baseline := as.integer(date_full < first_covid_death_date) ]
   days_in_week_agg <- days_in_week[, .(observed_days = .N), by=.(year, week, in_baseline)]
 
