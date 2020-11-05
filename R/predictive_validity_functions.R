@@ -29,14 +29,13 @@ calculate_rmse_rse <- function(
   in_data, num_field, denom_field, est_field, group_fields = NULL
 ){
   # Ensure that there are no missing columns
-  missing_cols <- setdiff(
-    colnames(in_data), c(num_field, denom_field, est_field, group_fields)
-  )
+  reqd_cols <- c(num_field, denom_field, est_field, group_fields)
+  missing_cols <- setdiff(reqd_cols, colnames(in_data))
   if(length(missing_cols) > 0){
     stop("Missing fields for RMSE calculation:" , paste(missing_cols, collapse=', '))
   }
   # If no grouping field is specified, make a dummy field
-  dt_for_error <- data.table::copy(in_data)
+  dt_for_error <- data.table::copy(in_data[, ..reqd_cols])
   if(length(group_fields) == 0){
     dt_for_error[, agg_dummy := 1 ]
     group_by <- 'agg_dummy'
@@ -51,7 +50,7 @@ calculate_rmse_rse <- function(
   dt_for_error[, baseline := sum(get(num_field))/sum(get(denom_field)), by = group_by]
   # Aggregate to get RMSE and RSE, weighted and unweighted
   error_dt <- dt_for_error[, .(
-      rmse = sqrt(sum((estfld - obsfld)**2)),
+      rmse = sqrt(sum((estfld - obsfld)**2)/.N),
       rmse_weighted = sqrt(sum(wgtfld * (estfld - obsfld)**2) / sum(wgtfld)),
       rse = sum((estfld - obsfld)**2) / sum((baseline - obsfld)**2),
       rse_weighted = (
@@ -97,7 +96,7 @@ calculate_coverage <- function(
 ){
   # Ensure that there are no missing columns
   missing_cols <- setdiff(
-    colnames(in_data), c(num_field, denom_field, draw_fields, group_fields)
+    c(num_field, denom_field, draw_fields, group_fields), colnames(in_data)
   )
   if(length(missing_cols) > 0){
     stop("Missing fields for coverage:" , paste(missing_cols, collapse=', '))
@@ -120,14 +119,14 @@ calculate_coverage <- function(
     # Example UI: 95% -> c(0.025, 0.975)
     alpha <- (1 - this_lev)/2
     dt_for_covg$c_lower <- matrixStats::rowQuantiles(
-      dt_for_covg[, ..draw_fields], probs = alpha
+      as.matrix(dt_for_covg[, ..draw_fields]), probs = alpha
     )
     dt_for_covg$c_upper <- matrixStats::rowQuantiles(
-      dt_for_covg[, ..draw_fields], probs = 1 - alpha
+      as.matrix(dt_for_covg[, ..draw_fields]), probs = 1 - alpha
     )
     # Check whether each observation is in the specified interval
     dt_for_covg[,
-      (this_lev_field) := as.integer((obsfld > c_lower) & (obsfld < c_upper))
+      (this_lev_field) := as.integer((obsfld >= c_lower) & (obsfld <= c_upper))
     ]
     dt_for_covg[, c('c_lower', 'c_upper') := NULL ]
   }
