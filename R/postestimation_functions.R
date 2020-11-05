@@ -87,28 +87,35 @@ get_fourier_seasonality_fit <- function(fourier_coefs){
 #' @param num_draws [int] How many posterior predictive samples to take?
 #' @param covariate_names [char] All covariate field names, including 'intercept'
 #' @param template_dt [data.table] table containing at least the following fields:
-#'   - idx_age: Zero-indexed age grouping
-#'   - idx_week: Zero-indexed week grouping (typically week - 1)
-#'   - idx_year: Zero-indexed year grouping (typically year - min(year))
-#'   - idx_loc: Zero-indexed location grouping
-#'   - idx_fourier: Indexer for fourier analysis
+#'    - idx_age: Zero-indexed age grouping
+#'    - idx_week: Zero-indexed week grouping (typically week - 1)
+#'    - idx_year: Zero-indexed year grouping (typically year - min(year))
+#'    - idx_loc: Zero-indexed location grouping
+#'    - idx_fourier: Indexer for fourier analysis
+#' @param rescale_covars [bool, default TRUE] Should covariates in the template
+#'   data.table be rescaled based on a set of normalizing factors?
+#' @param covar_scaling_factors [default NULL] If `rescale_covars` is TRUE, this
+#'   argument should be set to a data.table with three fields:
+#'    - 'cov_name': The name of each covariate in `covariate_names`
+#'    - 'cov_mean': The mean that will be subtracted for normalization
+#'    - 'cov_sd': The standard deviation that will be divided for normalization
 #' @param fourier_harmonics_level [int, default NULL] Number of levels used to
 #'   fit seasonality in the model. This parameter will be ignored if there are
 #'   no `Z_fourier` parameters in the fitted output
 #'
 #' @return A named list with three items:
-#'   - 'param_names': Vector of parameter names in the order they have been
-#'        extracted
-#'   - 'param_draws': Matrix of parameter draws
-#'   - 'pred_draws': Matrix of mortality predictive draws, taken at the
-#'        observation points specified in the `template_dt`
+#'    - 'param_names': Vector of parameter names in the order they have been
+#'         extracted
+#'    - 'param_draws': Matrix of parameter draws
+#'    - 'pred_draws': Matrix of mortality predictive draws, taken at the
+#'         observation points specified in the `template_dt`
 #'
-#' @import tictoc
 #' @import data.table
 #' @export
 generate_stwa_draws <- function(
   tmb_sdreport, keep_params, num_draws, covariate_names, template_dt,
-  fourier_harmonics_level
+  rescale_covars = FALSE, covar_scaling_factors = NULL,
+  fourier_harmonics_level = NULL
 ){
   # Copy input data
   templ <- data.table::copy(template_dt)
@@ -139,7 +146,6 @@ generate_stwa_draws <- function(
 
   ## Get parameter draws
   message(sprintf(" - Generating %i parameter draws...", num_draws))
-  tictoc::tic(" - Parameter draw generation")
   prec_mat <- tmb_sdreport$jointPrecision
   prec_subset <- which(colnames(prec_mat) %in% keep_params)
   prec_mat <- prec_mat[ prec_subset, prec_subset ]
@@ -150,7 +156,6 @@ generate_stwa_draws <- function(
     n.sims = num_draws
   )
   rownames(param_draws) <- parnames
-  tictoc::toc()
 
   ## Generate predictive draws from parameter draws
   # Sort by id fields beforehand to add random effects more easily
@@ -158,9 +163,21 @@ generate_stwa_draws <- function(
   templ <- templ[order(idx_age, idx_week, idx_year, idx_loc)]
   templ[, sorted_row_id := .I ]
 
-  # Prediction = exp( Covar FEs + age FEs + REs + sometimes seasonality )
+  # If covariates need to be rescaled, do so now
+  if(rescale_covars){
+    message("     - Rescaling covariates in template data.table...")
+    for(this_cov in setdiff(covariate_names, 'intercept')){
+      cov_mean <- covar_scaling_factors[cov_name == this_cov, cov_mean]
+      cov_sd <- covar_scaling_factors[cov_name == this_cov, cov_sd]
+      templ[, (this_cov) := (get(this_cov) - cov_mean) / cov_sd ]
+    }
+  }
+
+  # Prediction = inverse.logit( Covar FEs + age FEs + REs + sometimes seasonality )
   # Covariate fixed effects
-  cov_fes <- as.matrix(template_dt[, ..use_covs]) %*% param_draws[parnames=='beta_covs', ]
+  cov_fes <- (
+    as.matrix(templ[, ..covariate_names]) %*% param_draws[parnames=='beta_covs', ]
+  )
   # Age fixed effects
   age_fes <- rbind(0, param_draws[parnames=='beta_ages', ])[ templ$idx_age + 1 ]
 
@@ -168,13 +185,13 @@ generate_stwa_draws <- function(
   res <- matrix(0., nrow=nrow(templ), ncol=num_draws)
 
   if(any(parnames=='Z_stwa')){
-    message(" - Adding joint location-year-week-age random effect")
+    message("     - Adding joint location-year-week-age random effect")
     if(nrow(res) != nrow(param_draws["Z_stwa", ])) stop("Z_stwa dims issue")
     res <- res + param_draws[parnames=="Z_stwa", ]
   }
 
   if(any(parnames=='Z_sta')){
-    message(" - Adding joint location-year-age random effect")
+    message("     - Adding joint location-year-age random effect")
     n_ages <- max(templ$idx_age) + 1
     n_weeks <- max(templ$idx_week) + 1
     n_years <- max(templ$idx_year) + 1
@@ -192,7 +209,7 @@ generate_stwa_draws <- function(
   }
 
   if(any(parnames=='Z_fourier')){
-    message("  - Adding seasonality effect from fourier analysis")
+    message("     - Adding seasonality effect from fourier analysis")
     if(is.null(fourier_harmonics_level)) stop("Harmonics level cannot be NULL")
     f_ncol <- fourier_harmonics_level * 2
     if(sum(parnames=='Z_fourier') %% (f_ncol) != 0){
@@ -222,7 +239,8 @@ generate_stwa_draws <- function(
     res <- res + z_fourier[templ$f_row, ]
   }
 
-  preds <- exp(cov_fes + age_fes + res)
+  logit_preds <- cov_fes + age_fes + res
+  preds <- exp(logit_preds) / (1 + exp(logit_preds))
   # Reorder by the original row ordering
   templ <- templ[order(row_id)]
   preds <- preds[templ$sorted_row_id, ]
@@ -340,7 +358,7 @@ aggregate_data_and_draws <- function(
 ){
   # Ensure that there are no missing columns
   missing_cols <- setdiff(
-    colnames(in_data), c(num_field, denom_field, draw_fields, group_fields)
+    c(num_field, denom_field, draw_fields, group_fields), colnames(in_data)
   )
   if(length(missing_cols) > 0){
     stop("Missing fields for aggregation:" , paste(missing_cols, collapse=', '))
@@ -358,8 +376,8 @@ aggregate_data_and_draws <- function(
   to_agg[, dummy_denom := get(denom_field) ]
   # Run aggregation
   agg_data <- to_agg[, c(
-      list(denom_field = sum(denom_field), num_field = sum(num_field)),
-      lapply(.SD, function(x) weighted.mean(x, w = denom_field))
+      list(dummy_denom = mean(dummy_denom), dummy_num = mean(dummy_num)),
+      lapply(.SD, function(x) weighted.mean(x, w = dummy_denom))
     ),
     .SDcols = draw_fields,
     by = group_by

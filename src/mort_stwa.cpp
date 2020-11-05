@@ -167,7 +167,7 @@ Type objective_function<Type>::operator() () {
     vector<Type> struct_res_i(num_obs);
 
     // Create a vector to hold individual data estimates
-    vector<Type> log_prob_i(num_obs);
+    vector<Type> logit_prob_i(num_obs);
 
     // Harmonic frequency of 1 year (52 weeks)
     Type year_freq = 2.0 * 3.1415926535 / 52.0;
@@ -272,12 +272,11 @@ Type objective_function<Type>::operator() () {
         }
 
         // Determine logit probability for this observation
-        log_prob_i(i) = fes_i(i) + beta_ages(idx_age(i)) + struct_res_i(i);
+        logit_prob_i(i) = fes_i(i) + beta_ages(idx_age(i)) + struct_res_i(i);
 
-        PARALLEL_REGION jnll -= dpois(\
-            y_i(i),\
-            exp(log_prob_i(i)) * n_i(i) * days_exp_i(i) / 7.0,\
-            true\
+        // Use the dbinom_robust PDF function, parameterized using logit(prob)
+        PARALLEL_REGION jnll -= dbinom_robust(\
+            y_i(i), n_i(i) * days_exp_i(i) / 7.0, logit_prob_i(i), true\
         );
       }
     }

@@ -52,8 +52,9 @@ assign_seasonality_ids <- function(input_data, grouping_fields = NULL){
 #'
 #' @description Find the Maximum a Priori (MAP) estimates for fixed effect
 #'   parameter values, including age-specific fixed effects, in a simplified
-#'   version of the GLMM. Starting the full TMB model with fixed effect starting
-#'   values set at the MAP has been shown to improve performance and run time.
+#'   version of a binomial GLM. Starting the full TMB model with fixed effect
+#'   starting values set at the MAP has been shown to improve performance and
+#'   run time.
 #'
 #' @param in_data Input data.table, including only the data used to train the
 #'    model. Fields must include a numerator, a denominator, fields named for
@@ -62,12 +63,6 @@ assign_seasonality_ids <- function(input_data, grouping_fields = NULL){
 #' @param denominator_field Field name for the denominator (eg population)
 #' @param covar_names Names of all covariates, including 'intercept' if desired
 #' @param grouping_field [optional] Field that groups observations by ID
-#' @param family [optional, default 'poisson'] Which distribution family
-#'   should be followed (and therefore what link function should be used?) See
-#'   `help(family)` for more information and alternate options
-#' @param link_fun [optional, default 'log'] What link function should be used
-#'   to link the outcome variable with the underlying linear regression? This is
-#'   also relevant to how the offset is implemented
 #'
 #' @return Named list with two items:
 #'     - "glm_fit": Full model fit for the GLM
@@ -79,38 +74,43 @@ assign_seasonality_ids <- function(input_data, grouping_fields = NULL){
 #'
 #' @import data.table glue stats
 #' @export
-find_map_parameter_estimates <- function(
-  in_data, numerator_field, denominator_field, covar_names,
-  grouping_field = NULL, family = 'poisson', link_fun = 'log'
+find_binomial_map_parameter_estimates <- function(
+  in_data, numerator_field, denominator_field, covar_names, grouping_field = NULL
 ){
-  # Copy to ensure this doesn't overwrite data outside of the function scope
-  model_data <- data.table::copy(in_data)
   # Ensure that all columns are available in input data
   reqd <- c(numerator_field, denominator_field, covar_names, grouping_field)
-  missing_fields <- reqd[ !reqd %in% names(model_data) ]
+  missing_fields <- setdiff(reqd, colnames(in_data))
   if(length(missing_fields) > 0){
-    stop("Input data missing fields: ", paste(missing_fields, collapse=', '))
+    stop("MAP input data missing fields: ", paste(missing_fields, collapse=', '))
   }
+  in_data <- na.omit(in_data, cols = reqd)
 
   # Add group-based fixed effects, if specified
-  if(!is.null(grouping_field) & model_data[, uniqueN(get(grouping_field)) ] > 1){
-    grp_vals <- sort(unique(model_data[[grouping_field]]))
+  if(!is.null(grouping_field) & in_data[, uniqueN(get(grouping_field)) ] > 1){
+    grp_vals <- sort(unique(in_data[[grouping_field]]))
     # The first group is set as 'default' - others vary with a fixed effect
     for(grp_val in grp_vals[2:length(grp_vals)]){
-      model_data[, paste0('grp',grp_val) := 0 ]
-      model_data[ get(grouping_field) == grp_val, paste0('grp',grp_val) := 1 ]
+      in_data[, paste0('grp',grp_val) := 0 ]
+      in_data[ get(grouping_field) == grp_val, paste0('grp',grp_val) := 1 ]
     }
     grp_cols <- paste0('grp', grp_vals[2:length(grp_vals)])
   } else {
     grp_cols <- c()
   }
 
+  # Get a field representing proportion of successes
+  in_data[, prop_success := get(numerator_field) / get(denominator_field) ]
+
   # Set up formula with an offset based on link function, then run the GLM
   formula_char <- glue::glue(
-    "{numerator_field} ~ 0 + {paste(c(covar_names, grp_cols), collapse = ' + ')}",
-    " + offset({link_fun}({denominator_field}))"
+    "prop_success ~ 0 + {paste(c(covar_names, grp_cols), collapse = ' + ')}"
   )
-  glm_fit <- stats::glm(formula_char, data = model_data, family = family)
+  .env <- environment()
+  formula_parsed <- as.formula(formula_char, env = .env)
+  glm_fit <- stats::glm(
+    formula_parsed, data = in_data, family = 'binomial',
+    weights = in_data[[denominator_field]]
+  )
 
   # Return the full GLM fit, the covariate fixed effects, and (optionally) the
   #  grouped fixed effects
@@ -234,9 +234,9 @@ setup_run_tmb <- function(
     vbmsg(sprintf('Detected %s threads in OMP environmental variable.',threads))
     openmp(as.numeric(threads))
   } else {
-    vbmsg("Did not detect environmental OMP variable, defaulting to 4 cores. \n
-           You can set this using OMP_NUM_TREADS or when launching singularity image.")
-    openmp(4)
+    vbmsg("Did not detect environmental OMP variable, defaulting to 2 cores. \n
+           You can set this using OMP_NUM_THREADS.")
+    openmp(2)
   }
 
   # Add a flag to the data input stack if normalize is specified

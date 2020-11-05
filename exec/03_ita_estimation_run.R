@@ -6,11 +6,15 @@
 ##
 ## -----------------------------------------------------------------------------
 
+message("================= Space-time mortality fitting script ================")
+message("Start time: ", Sys.time())
+message("Script start")
 library(argparse)
 library(data.table)
+library(parallel)
 library(sp)
 library(sf)
-library(parallel)
+library(tictoc)
 
 dev_fp <- '~/repos/covidemr/'
 devtools::load_all(dev_fp)
@@ -41,6 +45,15 @@ ap$add_argument(
   help='Grouping fields for seasonality (default one group for all data)'
 )
 args <- ap$parse_args(commandArgs(TRUE))
+# args <- list(
+#   run_sex = 'male', data_version = '20201026', model_version = '20201103f2',
+#   holdout = 0, use_covs = c(
+#     'intercept', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
+#     'elevation', 'temperature'
+#   ), use_Z_stwa = FALSE, use_Z_sta = TRUE, use_Z_fourier = TRUE,
+#   use_nugget = FALSE, fourier_levels = 2,
+#   fourier_groups = NULL
+# )
 message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
 
@@ -53,6 +66,7 @@ get_prep_fp <- function(ff) file.path(prep_dir, config$prepped_data_files[[ff]])
 
 prepped_data <- data.table::fread(get_prep_fp('full_data_rescaled'))
 template_dt <- data.table::fread(get_prep_fp('template'))
+covar_scaling_factors <- data.table::fread(get_prep_fp('covar_scaling_factors'))
 location_table <- data.table::fread(get_prep_fp('location_table'))
 adjmat <- readRDS(get_prep_fp('adjacency_matrix'))
 
@@ -64,7 +78,9 @@ template_dt$idx_fourier <- assign_seasonality_ids(
 
 prepped_data <- prepped_data[sex==args$run_sex, ]
 # Set holdout IDs
-prepped_data[, idx_fourier := 0 ] # Alternate option: group by age
+prepped_data$idx_fourier <- assign_seasonality_ids(
+  input_data = prepped_data, grouping_fields = args$fourier_groups
+)
 
 # Subset to only input data for this model
 in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baseline==1), ]
@@ -98,14 +114,12 @@ data_stack <- list(
 
 # Find MAP approximation of all model fixed effects. This will be used to set
 #  the starting values for the model
-max_a_priori_list <- covidemr::find_map_parameter_estimates(
-  in_data = in_data_final,
+max_a_priori_list <- covidemr::find_binomial_map_parameter_estimates(
+  in_data = copy(in_data_final),
   numerator_field = 'deaths',
   denominator_field = 'pop',
   covar_names = use_covs,
-  grouping_field = 'idx_age',
-  family = 'poisson',
-  link_fun = 'log'
+  grouping_field = 'idx_age'
 )
 map_glm_fit <- max_a_priori_list$glm_fit
 
@@ -172,6 +186,7 @@ if(args$use_Z_fourier) tmb_random <- c(tmb_random, 'Z_fourier')
 
 ## Run modeling ----------------------------------------------------------------
 
+tictoc::tic("Full TMB model fitting")
 model_fit <- covidemr::setup_run_tmb(
   tmb_data_stack=data_stack,
   params_list=params_list,
@@ -186,11 +201,13 @@ model_fit <- covidemr::setup_run_tmb(
 
 message("Getting sdreport and joint precision matrix...")
 sdrep <- sdreport(model_fit$obj, bias.correct = TRUE, getJointPrecision = TRUE)
+tictoc::toc()
 
 
 ## Create post-estimation predictive objects -----------------------------------
 
 # Draws of parameters and baseline modeled deaths (assuming no COVID)
+tictoc::tic("Full model postestimation")
 postest_list <- vector('list', length = ceiling(config$num_draws / 50))
 for(ii in 1:length(postest_list)){
   postest_list[[ii]] <- covidemr::generate_stwa_draws(
@@ -199,6 +216,8 @@ for(ii in 1:length(postest_list)){
     num_draws = min(50, config$num_draws - (ii - 1) * 50),
     covariate_names = use_covs,
     template_dt = template_dt,
+    rescale_covars = TRUE,
+    covar_scaling_factors = covar_scaling_factors,
     fourier_harmonics_level = args$fourier_levels
   )
 }
@@ -234,6 +253,7 @@ if(args$holdout == 0){
   pred_sub_idx <- which(pred_summary$idx_holdout == args$holdout)
   pred_draws <- pred_draws[ pred_sub_idx , ]
 }
+tictoc::toc()
 
 
 ## Save outputs ----------------------------------------------------------------
@@ -276,4 +296,5 @@ for(obj_str in save_objs){
   }
 }
 
-message("*** FIN ***")
+message("Model fitting script COMPLETE")
+message("End time: ", Sys.time())
