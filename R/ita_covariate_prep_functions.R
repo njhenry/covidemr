@@ -672,7 +672,7 @@ ita_prepare_covar_temperature <- function(
 
   # Query the Meteostat API for daily temperatures in selected locations
   api_key <- readLines(covar_fp)
-  meteostat_folder <- file.path(dirname(api_key), 'meteostat')
+  meteostat_folder <- file.path(dirname(covar_fp), 'meteostat')
   dir.create(meteostat_folder, showWarnings = FALSE)
   raw_temp_data <- ita_temperature_query_api(
     model_years = model_years,
