@@ -183,6 +183,8 @@ for(covar_name in covar_names){
   }
 }
 
+template_dt <- template_dt[year < 2020 | week <= final_obs_week, ]
+
 # Save out
 fwrite(template_dt, file = get_prep_fp('template'))
 
