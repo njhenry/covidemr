@@ -11,7 +11,8 @@ ita_prepare_covariate(
   location_table,
   pop_raster = NULL,
   polys_sf = NULL,
-  projection = NULL
+  projection = NULL,
+  final_obs_week = NULL
 )
 }
 \arguments{
@@ -31,6 +32,9 @@ per modeling year. Only used to prepare raster covariates, default NULL.}
 
 \item{projection}{[optional] Character vector giving the proj4 CRS
 definition. Example: "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs"}
+
+\item{final_obs_week}{[optional] ID for the final observed week in 2020,
+formatted as an integer between 1 and 52 inclusive.}
 }
 \value{
 A list of two items:

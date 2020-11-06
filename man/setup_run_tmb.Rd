@@ -17,10 +17,11 @@ setup_run_tmb(
   set_limits = FALSE,
   limit_max = 10,
   limit_min = -limit_max,
-  optimization_methods = c("L-BFGS-B", "nlminb", "Rcgmin", "spg", "bobyqa", "CG",
+  optimization_methods = c("nlminb", "L-BFGS-B", "Rcgmin", "spg", "bobyqa", "CG",
     "Nelder-Mead"),
   model_name = "model",
-  verbose = FALSE
+  verbose = FALSE,
+  inner_verbose = FALSE
 )
 }
 \arguments{
@@ -55,13 +56,19 @@ maximum value for any fixed effect}
 \item{limit_min}{[numeric, default -limit_max] If limits are set in the model,
 minimum value of any fixed effect}
 
-\item{optimization_methods}{[char] Character vector naming optimization 
+\item{optimization_methods}{[char] Character vector naming optimization
 to try in optimx. The first method that converges (returns `convcode==0`)
 will be returned.}
 
 \item{model_name}{[char, default "model"] name of the model}
 
-\item{verbose}{[boolean, default FALSE] Should this function return}
+\item{verbose}{[boolean, default FALSE] Should this function return logging
+information about the stage of model fitting, including the outer optizimer
+sampling? This will be somewhat long (>100 lines)}
+
+\item{inner_verbose}{[boolean, default FALSE] Should this function return
+logging information about inner optimizer sampling? This can be useful for
+debugging, but will show very verbose (>10k lines) output.}
 }
 \value{
 list of two objects: obj (ADFunction object), and opt (optimized

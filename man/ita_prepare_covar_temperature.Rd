@@ -9,7 +9,8 @@ ita_prepare_covar_temperature(
   model_years,
   location_table,
   pop_raster,
-  polys_sf
+  polys_sf,
+  final_obs_week
 )
 }
 \arguments{
@@ -23,8 +24,10 @@ pull weekly templerature data}
 \item{pop_raster}{[optional] Population rasterBrick object, with one layer
 per modeling year. Only used to prepare raster covariates, default NULL.}
 
-\item{polys_sf}{[optional] Polygon boundaries
-'}
+\item{polys_sf}{[optional] Polygon boundaries}
+
+\item{final_obs_week}{ID for the final observed week in 2020, formatted as an
+integer between 1 and 52 inclusive.}
 }
 \value{
 A list of two items:

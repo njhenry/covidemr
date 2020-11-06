@@ -20,14 +20,14 @@ occur in the absence of COVID}
 \value{
 Named list containing three items:
   - 'obs_deaths': Data.table of observed deaths
-  - 'excess_draws': Matrix containing excess mortality draws by 
+  - 'excess_draws': Matrix containing excess mortality draws by
       location/year/week/age. Each row of this matrix corresponds to a row in
       `obs_deaths`.
-  - 'proportion_draws': Same format as excess_draws, but containing the 
+  - 'proportion_draws': Same format as excess_draws, but containing the
        ratio of deaths compared to baseline rather than the difference
 }
 \description{
-The traditional calculation for COVID excess mortality 
+The traditional calculation for COVID excess mortality
   calculates excess deaths by subtracting the observed number of deaths from
   an estimated baseline. This function subtracts the observed value (a
   single value) from the baseline (by draw) to get draws of excess.

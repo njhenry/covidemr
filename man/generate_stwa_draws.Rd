@@ -6,10 +6,13 @@
 \usage{
 generate_stwa_draws(
   tmb_sdreport,
+  keep_params,
   num_draws,
   covariate_names,
   template_dt,
-  fourier_harmonics_level
+  rescale_covars = FALSE,
+  covar_scaling_factors = NULL,
+  fourier_harmonics_level = NULL
 )
 }
 \arguments{
@@ -18,6 +21,9 @@ Should include a joint precision matrix (by specifying
 `getJointPrecision = TRUE` in the call to `sdreport()`). This object will be
 parsed to check for fixed effects, random effects, and the Fourier time
 series terms.}
+
+\item{keep_params}{[char] Vector of parameter names to keep when generating
+draws from the precision matrix. Keep only parameters needed for prediction}
 
 \item{num_draws}{[int] How many posterior predictive samples to take?}
 
@@ -30,13 +36,26 @@ series terms.}
 - idx_loc: Zero-indexed location grouping
 - idx_fourier: Indexer for fourier analysis}
 
+\item{rescale_covars}{[bool, default TRUE] Should covariates in the template
+data.table be rescaled based on a set of normalizing factors?}
+
+\item{covar_scaling_factors}{[default NULL] If `rescale_covars` is TRUE, this
+argument should be set to a data.table with three fields:
+ - 'cov_name': The name of each covariate in `covariate_names`
+ - 'cov_mean': The mean that will be subtracted for normalization
+ - 'cov_sd': The standard deviation that will be divided for normalization}
+
 \item{fourier_harmonics_level}{[int, default NULL] Number of levels used to
 fit seasonality in the model. This parameter will be ignored if there are
 no `Z_fourier` parameters in the fitted output}
 }
 \value{
-A named list with two items:
-  - XX TODO
+A named list with three items:
+   - 'param_names': Vector of parameter names in the order they have been
+        extracted
+   - 'param_draws': Matrix of parameter draws
+   - 'pred_draws': Matrix of mortality predictive draws, taken at the
+        observation points specified in the `template_dt`
 }
 \description{
 Given the outputs from a fitted TMB model object, create
