@@ -183,8 +183,6 @@ for(covar_name in covar_names){
   }
 }
 
-template_dt <- template_dt[year < 2020 | week <= final_obs_week, ]
-
 # Save out
 fwrite(template_dt, file = get_prep_fp('template'))
 
@@ -206,6 +204,7 @@ in_data <- merge(
 if(nrow(in_data[is.na(deaths)])/nrow(in_data) > .2){
   stop("Deaths missing from more than 20% of observations - check data!")
 }
+in_data <- in_data[year < 2020 | week <= final_obs_week, ]
 in_data[is.na(deaths), `:=` (deaths=0, observed_days=7)]
 
 # Save to file
