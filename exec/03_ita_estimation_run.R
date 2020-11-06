@@ -46,15 +46,15 @@ ap$add_argument(
 )
 args <- ap$parse_args(commandArgs(TRUE))
 # args <- list(
-#   run_sex = 'male', data_version = '20201026', model_version = '20201103f2',
+#   run_sex = 'female', data_version = '20201104', model_version = '20201104f3fageloc',
 #   holdout = 0, use_covs = c(
 #     'intercept', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
 #     'elevation', 'temperature'
 #   ), use_Z_stwa = FALSE, use_Z_sta = TRUE, use_Z_fourier = TRUE,
-#   use_nugget = FALSE, fourier_levels = 2,
-#   fourier_groups = NULL
+#   use_nugget = FALSE, fourier_levels = 3,
+#   fourier_groups = c('age_group_code', 'location_code')
 # )
-message(str(args))
+# message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
 
 
@@ -195,7 +195,7 @@ model_fit <- covidemr::setup_run_tmb(
   normalize = TRUE, run_symbolic_analysis = TRUE,
   tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
   model_name="ITA deaths model",
-  verbose=FALSE, inner_verbose=FALSE,
+  verbose=TRUE, inner_verbose=FALSE,
   optimization_methods = c('nlminb', 'L-BFGS-B')
 )
 
