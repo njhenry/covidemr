@@ -205,6 +205,8 @@ generate_stwa_draws <- function(
       rep(1:(n_years * n_locs), times = n_ages * n_weeks) +
       rep(((1:n_ages)-1) * (n_years*n_locs), each = n_years * n_locs * n_weeks)
     )
+    # Truncate if weeks are missing from the final year
+    z_sta_idx <- z_sta_idx[1:nrow(templ)]
     res <- res + param_draws[parnames=='Z_sta',][z_sta_idx,]
   }
 
@@ -350,11 +352,14 @@ summarize_draws <- function(draws){
 #'   fields for grouping observations during the aggregation. If this field is
 #'   empty, all data will be aggregated to a single row and returned with no
 #'   identifiers
+#' @param summarize [bool, default TRUE] should summary columns be added for the
+#'   aggregated draws?
 #'
-#' @import data.table
+#' @import data.table matrixStats
 #' @export
 aggregate_data_and_draws <- function(
-  in_data, num_field, denom_field, draw_fields, group_fields = NULL
+  in_data, num_field, denom_field, draw_fields, group_fields = NULL,
+  summarize = TRUE
 ){
   # Ensure that there are no missing columns
   missing_cols <- setdiff(
@@ -376,15 +381,24 @@ aggregate_data_and_draws <- function(
   to_agg[, dummy_denom := get(denom_field) ]
   # Run aggregation
   agg_data <- to_agg[, c(
-      list(dummy_denom = mean(dummy_denom), dummy_num = mean(dummy_num)),
+      list(dummy_num = sum(dummy_num)),
       lapply(.SD, function(x) weighted.mean(x, w = dummy_denom))
     ),
     .SDcols = draw_fields,
     by = group_by
   ]
-  # Clean up and return
+  # Clean up
   if(num_field != 'dummy_num') setnames(agg_data, 'dummy_num', num_field)
-  if(denom_field != 'dummy_denom') setnames(agg_data, 'dummy_denom', denom_field)
   if(length(group_fields) == 0) agg_data[, agg_dummy := NULL ]
+  # Add summary pred columns
+  if(summarize){
+    agg_data$pred_mean <- rowMeans(agg_data[, ..draw_fields], na.rm=TRUE)
+    agg_data$pred_lower <- matrixStats::rowQuantiles(
+      as.matrix(agg_data[, ..draw_fields]), probs = .025, na.rm = TRUE
+    )
+    agg_data$pred_upper <- matrixStats::rowQuantiles(
+      as.matrix(agg_data[, ..draw_fields]), probs = .975, na.rm = TRUE
+    )
+  }
   return(agg_data)
 }
