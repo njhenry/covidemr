@@ -7,6 +7,13 @@
 // Purpose: TMB objective function for Italy all-cause mortality model with
 //   space, time (year/week), and age random effects
 //
+// MODEL FORMULATION (load into a TeX interpreter)
+//
+// D_i \sim Binomial(N_i, p_i)
+//
+// logit(p_i) = \sum_{k=1}^{4}\alpha_i * \mathbb{I}[age_i = k] + \vec{\beta} X +
+//   Z_{prov_i, year_i, age_i} + f_{prov_i, age_i}(week_i) + \epsilon_i
+//
 // /////////////////////////////////////////////////////////////////////////////
 
 
