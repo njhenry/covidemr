@@ -14,7 +14,7 @@
 echo "======================================================================" &&
 echo "" &&
 echo "*** Data will be saved to $1 ***" &&
-cd $1 && mkdir shp && mkdir deaths && mkdir pop_raster && mkdir covars/raster && mkdir covid_deaths &&
+cd $1 && mkdir -p shp deaths pop_raster covars/raster covid_deaths &&
 cd shp &&
 wget http://www.istat.it/storage/cartografia/confini_amministrativi/non_generalizzati/Limiti01012020.zip &&
 wget http://www.istat.it/storage/cartografia/confini_amministrativi/generalizzati/Limiti01012020_g.zip &&
