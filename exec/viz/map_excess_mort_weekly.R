@@ -329,8 +329,10 @@ agg_by_prov_top90[, top_grouping := 'Other'
   ][rank <= 9, top_grouping := 'Top 9 provinces'
   ][rank <= 3, top_grouping := 'Top 3 provinces' ]
 
-top_prov_dt <- agg_by_prov_top90[, .(location_code, ex_mean, rank, top_grouping)]
+top_prov_dt <- agg_by_prov_top90[, .(location_code, ex_mean, rank, top_grouping, pop)]
 top_prov_dt <- merge(location_table, top_prov_dt, by='location_code')[order(rank)]
+top_prov_dt[, cumul_prop_pop := cumsum(pop)/sum(pop) ]
+top_prov_dt[, cumul_prop_ex := cumsum(ex_mean)/sum(ex_mean) ]
 fwrite(top_prov_dt, file=file.path(viz_dir, 'top_provinces_by_excess.csv'))
 
 
@@ -591,7 +593,7 @@ for(loc_code in unique(location_table$location_code)){
 }
 
 
-## Map the week of peak excess across provinces --------------------------------
+## Map the week of peak excess across northern provinces -----------------------
 
 peak_excess_dt <- agg_summ[ week %in% 9:21,
   ][, week_rank := frank(-ex_mean), by = location_code
@@ -620,7 +622,40 @@ covidemr::map_ita_choropleth(
   fill_list = list(
     values = wk_colors, limits = rev(wk_labs)
   ),
-  titles_list = list(title = 'Week of peak excess mortality', fill = 'Week beginning'),
+  titles_list = list(
+    title = 'Week of peak excess mortality',
+    subtitle = 'March through May 2020',
+    fill = 'Week beginning'),
   fill_type = 'manual',
   save_fp = file.path(viz_dir, 'peak_excess_week_map.png')
+)
+
+
+## Map the maximum excess across northern provinces ----------------------------
+
+fill_grps <- c(
+  '+ 0% to 50%', '+ 50% to 100%', '+ 100% to 200%', '+ 200% to 300%',
+  '+ 300% to 400%', '+ 400% to 500%', '+ >500%'
+)
+fill_colors <- c(RColorBrewer::brewer.pal('OrRd', n=9)[c(3,5:9)], '#2e051a')
+names(fill_colors) <- fill_grps
+fill_brks <- c(1., 1.5, 2., 3., 4., 5., 6., 100)
+
+peak_excess_dt[, fill_grp := fill_grps[cut(ratio_mean, fill_brks, labels=FALSE)]]
+
+
+covidemr::map_ita_choropleth(
+  province_sf = polys_sf[polys_sf$region_code %in% 1:9, ],
+  region_sf = regions_sf,
+  in_data = peak_excess_dt[region_code %in% 1:9, ],
+  map_field = 'fill_grp',
+  fill_list = list(
+    values = fill_colors, limits = rev(fill_grps)
+  ),
+  titles_list = list(
+    title = 'Peak excess mortality over baseline',
+    subtitle = 'March through May 2020',
+    fill = 'Excess Mortality'),
+  fill_type = 'manual',
+  save_fp = file.path(viz_dir, 'peak_excess_amount_map.png')
 )
