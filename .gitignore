@@ -85,7 +85,5 @@ po/*~
 RENV objects
 ^renv$
 ^renv\.lock$
-/renv/
-/.Rprofile
 ^.*\.Rproj$
 ^\.Rproj\.user$
