@@ -32,12 +32,13 @@ echo "***   - Deaths saved to $1/deaths ***" &&
 echo "*** Downloading population raster: ***" &&
 cd ../pop_raster &&
 WP_BASE=ftp://ftp.worldpop.org.uk/GIS/Population/Global_2000_2020_1km &&
-wget $WP_BASE/2015/ITA/ita_ppp_2015_1km_Aggregated.tif -O ita_2015.tif --no-passive &&
-wget $WP_BASE/2016/ITA/ita_ppp_2016_1km_Aggregated.tif -O ita_2016.tif --no-passive &&
-wget $WP_BASE/2017/ITA/ita_ppp_2017_1km_Aggregated.tif -O ita_2017.tif --no-passive &&
-wget $WP_BASE/2018/ITA/ita_ppp_2018_1km_Aggregated.tif -O ita_2018.tif --no-passive &&
-wget $WP_BASE/2019/ITA/ita_ppp_2019_1km_Aggregated.tif -O ita_2019.tif --no-passive &&
-wget $WP_BASE/2020/ITA/ita_ppp_2020_1km_Aggregated.tif -O ita_2020.tif --no-passive &&
+curl $WP_BASE/2015/ITA/ita_ppp_2015_1km_Aggregated.tif -o ita_2015.tif &&
+curl $WP_BASE/2015/ITA/ita_ppp_2015_1km_Aggregated.tif -o ita_2015.tif &&
+curl $WP_BASE/2016/ITA/ita_ppp_2016_1km_Aggregated.tif -o ita_2016.tif &&
+curl $WP_BASE/2017/ITA/ita_ppp_2017_1km_Aggregated.tif -o ita_2017.tif &&
+curl $WP_BASE/2018/ITA/ita_ppp_2018_1km_Aggregated.tif -o ita_2018.tif &&
+curl $WP_BASE/2019/ITA/ita_ppp_2019_1km_Aggregated.tif -o ita_2019.tif &&
+curl $WP_BASE/2020/ITA/ita_ppp_2020_1km_Aggregated.tif -o ita_2020.tif &&
 echo "*** Downloading COVID deaths from healthdata.org ***"
 cd ../covid_deaths &&
 wget https://ihmecovid19storage.blob.core.windows.net/archive/2020-10-15/ihme-covid19.zip &&
@@ -50,8 +51,8 @@ mkdir meteostat_cache_dir &&
 echo "*** Downloading raster covariates: ***" &&
 echo "***   - Access to hospitals ***" &&
 cd raster &&
-wget "https://malariaatlas.org/geoserver/ows?service=CSW&version=2.0.1&request=DirectDownload&ResourceId=Explorer:2020_motorized_travel_time_to_healthcare" \
-  -O healthcare_access.zip &&
+curl "https://malariaatlas.org/geoserver/ows?service=CSW&version=2.0.1&request=DirectDownload&ResourceId=Explorer:2020_motorized_travel_time_to_healthcare" \
+  -o healthcare_access.zip &&
 unzip healthcare_access.zip &&
 rm healthcare_access.zip &&
 mv 2020_motorized_travel_time_to_healthcare.geotiff healthcare_access.tif &&
