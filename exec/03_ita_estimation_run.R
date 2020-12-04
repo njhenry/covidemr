@@ -22,8 +22,7 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## Load run-specific settings from command line
 ap <- argparse::ArgumentParser(
-  description='COVID Excess Mortality: Model fitting script',
-  allow_abbrev=FALSE
+  description='COVID Excess Mortality: Model fitting script'
 )
 ap$add_argument('--run-sex', type='character', help='Sex-specific model to run')
 ap$add_argument('--data-version', type='character', help='Prepped data version date')
@@ -46,7 +45,7 @@ ap$add_argument(
 )
 args <- ap$parse_args(commandArgs(TRUE))
 # args <- list(
-#   run_sex = 'female', data_version = '20201104', model_version = '20201104f3fageloc',
+#   run_sex = 'female', data_version = '20201203', model_version = '20201203f3fageloc',
 #   holdout = 0, use_covs = c(
 #     'intercept', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
 #     'elevation', 'temperature'
@@ -54,7 +53,7 @@ args <- ap$parse_args(commandArgs(TRUE))
 #   use_nugget = FALSE, fourier_levels = 3,
 #   fourier_groups = c('age_group_code', 'location_code')
 # )
-# message(str(args))
+message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
 
 
