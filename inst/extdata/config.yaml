@@ -47,11 +47,11 @@ results_files:
   proportion_draws: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_proportion_draws.csv'
   excess_summary: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_excess_summary.csv'
 model_years: [2015, 2016, 2017, 2018, 2019, 2020]
-age_cutoffs: [0, 15, 45, 65]
+age_cutoffs: [0, 50, 60, 70, 80, 90]
 model_week_range: [1, 52]
 num_draws: 1000
 projection: "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs"
-first_death_date: '2020-03-01' # In YYYY-MM-DD format
+first_death_date: '2020-02-26' # In YYYY-MM-DD format
 final_obs_date: '2020-08-31' # In YYYY-MM-DD format
 pop_identifiers: ['age_group_code','sex','year','location_code']
 death_identifiers: ['age_group_code','sex','year','week','location_code']
