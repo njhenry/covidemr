@@ -42,8 +42,10 @@ pop_sub[, location_name := iconv(
 # Add necessary renames
 renames <- list(
   c("Valle d'Aosta / VallA(C)e d'Aoste", "Aosta"),
+  c("Valle d'Aosta / Vall~A(c)e d'Aoste", "Aosta"),
   c("Bolzano / Bozen", "Bolzano"),
   c("ForlA!-Cesena", "Forli'-Cesena"),
+  c("Forl~Anot-Cesena", "Forli'-Cesena"),
   c("Massa-Carrara", "Massa Carrara")
 )
 for(rename in renames) pop_sub[ location_name == rename[1], location_name := rename[2]]
