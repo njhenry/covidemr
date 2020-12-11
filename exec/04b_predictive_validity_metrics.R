@@ -45,8 +45,8 @@ ap$add_argument(
 )
 args <- ap$parse_args(commandArgs(TRUE))
 # args <- list(
-#   run_sex = 'male', data_version ='20201026', model_version = '20201103f2',
-#   oos = FALSE
+#   run_sex = 'male', data_version ='20201203', model_version = '20201211f2fageloc',
+#   oos = TRUE
 # )
 # Set some variables as globals for use with `glue()` later in script
 message(str(args))
@@ -93,7 +93,7 @@ if(nrow(template_dt) != length(check_index) | any(check_index != template_dt$row
 
 # Load draw-level data and column bind with identifying data
 if(args$oos){
-  holdouts <- setdiff(sort(unique(template_dt$idx_holdout)), 0)
+  holdouts <- 1:5
   fp_prefix <- glue::glue('{run_sex}_oos')
 } else {
   holdouts <- 0
@@ -138,7 +138,8 @@ error_full <- calculate_rmse_rse(
 )
 coverage_full <- calculate_coverage(
   in_data = pred_data_full, num_field = 'deaths', denom_field = 'pop',
-  draw_fields = draw_col_names, coverage_levels = c(.5, .8, .9, .95, .99)
+  draw_fields = draw_col_names, coverage_levels = c(.5, .8, .9, .95, .99),
+  binom_sim = TRUE
 )
 ## Save to file
 fwrite(error_full, file = glue::glue('{pv_dir}/{fp_prefix}_error_full_noagg.csv'))
@@ -153,16 +154,16 @@ age_cols <- RColorBrewer::brewer.pal(name = "Set1", n=length(age_groups))
 names(age_cols) <- age_groups
 
 
-xybreaks <- c(0, 1, 5, 10, 25, seq(50, 250, by=50))
 obs_scatter_all <- ggplot(data=pred_data_full) +
   geom_point(
-    aes(x=obs_plot, y=pred_mean_plot, size=sqrt(pop), color=age_group_name),
+    aes(x=obs_plot, y=pred_mean_plot, size=sqrt(pop)),
     alpha = .25
   ) +
+  facet_wrap('age_group_name', ncol=ceiling(sqrt(uniqueN(pred_data_full$age_group_name)))) +
   geom_abline(intercept = 0, slope = 1, linetype = 2, color = '#AAAAAA') +
   scale_color_manual(values=age_cols) +
-  scale_x_continuous(limits = range(xybreaks), breaks = xybreaks, labels = xybreaks, trans='sqrt') +
-  scale_y_continuous(limits = range(xybreaks), breaks = xybreaks, labels = xybreaks, trans='sqrt') +
+  scale_x_continuous(trans='sqrt') +
+  scale_y_continuous(trans='sqrt') +
   scale_size_continuous(
     breaks = c(5E3, 1E4, 5E4, 1E5), labels = c('5k', '10k', '50k', '100k')
   ) +
@@ -187,12 +188,19 @@ pred_data_full[, wkgrp := ceiling(week/4)]
 
 data_by_prov_month <- aggregate_data_and_draws(
   in_data = pred_data_full, num_field = 'deaths', denom_field = 'pop',
-  draw_fields = draw_col_names,
+  draw_fields = c(draw_col_names, 'obs'),
   group_fields = c('year', 'wkgrp', 'location_code', 'location_name')
 )
+# Merge population back on
+pop_prepped <- fread(file.path(
+  config$paths$prepped_data, args$data_version, config$prepped_data_files$population
+))
+pop_agg <- pop_prepped[, .(pop=sum(pop)), by=c('year', 'location_code')]
+data_by_prov_month[pop_agg, pop := i.pop, on=c('year', 'location_code')]
 
+# Get mean and predicted weekly mortality rates
 data_by_prov_month$pred_mean <- rowMeans(data_by_prov_month[, ..draw_col_names])
-data_by_prov_month[, obs := deaths / pop ]
+data_by_prov_month[, deaths := obs * pop ]
 
 error_provmonth <- calculate_rmse_rse(
   in_data = data_by_prov_month, num_field = 'deaths', denom_field = 'pop',
@@ -200,7 +208,8 @@ error_provmonth <- calculate_rmse_rse(
 )
 coverage_provmonth <- calculate_coverage(
   in_data = data_by_prov_month, num_field = 'deaths', denom_field = 'pop',
-  draw_fields = draw_col_names, coverage_levels = c(.5, .8, .9, .95, .99)
+  draw_fields = draw_col_names, coverage_levels = c(.5, .8, .9, .95, .99),
+  binom_sim = TRUE
 )
 # Save to file
 fwrite(error_provmonth, file = glue::glue('{pv_dir}/{fp_prefix}_error_provmonth.csv'))
@@ -208,11 +217,9 @@ fwrite(coverage_provmonth, file = glue::glue('{pv_dir}/{fp_prefix}_coverage_prov
 
 
 data_by_prov_month[, `:=` (obs_plot = obs * 1E5, pred_mean_plot = pred_mean * 1E5)]
-
 plot_years <- sort(unique(data_by_prov_month$year))
 plot_colors <- RColorBrewer::brewer.pal(name = "Set2", n=length(plot_years))
 names(plot_colors) <- as.character(plot_years)
-
 xybreaks <- seq(10, 50, by=10)
 
 obs_scatter_prov_month <- ggplot(data=data_by_prov_month[year < 2020 | wkgrp < 3,]) +
