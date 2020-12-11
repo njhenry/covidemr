@@ -183,6 +183,9 @@ for(covar_name in covar_names){
   }
 }
 
+# Set out-of-sample fold
+template_dt[, idx_holdout := year - 2014]
+
 # Save out
 fwrite(template_dt, file = get_prep_fp('template'))
 
