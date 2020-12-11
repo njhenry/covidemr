@@ -36,7 +36,7 @@ calculate_rmse_rse <- function(
   }
   # If no grouping field is specified, make a dummy field
   oos_cols <- c('year', 'age_group_code', 'location_code', 'week')
-  keep_cols <- c(reqd_cols, oos_cols)
+  keep_cols <- intersect(colnames(in_data), c(reqd_cols, oos_cols))
   dt_for_error <- data.table::copy(in_data[, ..keep_cols])
   if(length(group_fields) == 0){
     dt_for_error[, agg_dummy := 1 ]
@@ -62,15 +62,15 @@ calculate_rmse_rse <- function(
   compare_years <- na.omit(unique(dt_for_error$year))
   if(all(oos_cols %in% colnames(dt_for_error)) & (length(compare_years) > 0)){
     oos_grps <- setdiff(oos_cols, 'year')
-    oos_compare_dt <- rbindlist(compare_years, function(oosyr){
+    oos_compare_dt <- rbindlist(lapply(compare_years, function(oosyr){
       oosdt <- copy(dt_for_error[
-        year != oosyear,
+        year != oosyr,
         bl_oos := sum(get(num_field))/sum(get(denom_field)),
         by = oos_grps
       ])
-      oosdt[, year := oosdt ]
+      oosdt[, year := oosyr ]
       return(oosdt)
-    })
+    }))
     # Merge out-of-sample estimates back onto the original value
     dt_for_error[oos_compare_dt, bl_oos := i.bl_oos, on = oos_cols]
   } else {
@@ -114,6 +114,9 @@ calculate_rmse_rse <- function(
 #'   metrics should be grouped, list the fields to group them by here. If NULL
 #'   (the default), the predictive validity metrics will be calculated across
 #'   the entire dataset
+#' @param binom_sim [optional, default TRUE] Should the coverage be estimated
+#'   using draws from a predictive binomial distribution (as opposed to a simple
+#'   estimator of population * p)?
 #'
 #' @return Data.table containing the following fields:
 #'   - 'covg<X>': Empirical coverage for the X% uncertainty interval
@@ -123,8 +126,9 @@ calculate_rmse_rse <- function(
 #' @export
 calculate_coverage <- function(
   in_data, num_field, denom_field, draw_fields, coverage_levels = c(.5, .8, .95),
-  group_fields = NULL
+  group_fields = NULL, binom_sim = TRUE
 ){
+  dt_for_covg <- data.table::copy(in_data)
   # Ensure that there are no missing columns
   missing_cols <- setdiff(
     c(num_field, denom_field, draw_fields, group_fields), colnames(in_data)
@@ -133,15 +137,30 @@ calculate_coverage <- function(
     stop("Missing fields for coverage:" , paste(missing_cols, collapse=', '))
   }
   # If no grouping field is specified, make a dummy field
-  dt_for_covg <- data.table::copy(in_data)
-  dt_for_covg[, obsfld := get(num_field) / get(denom_field) ]
   if(length(group_fields) == 0){
     dt_for_covg[, agg_dummy := 1 ]
     group_by <- 'agg_dummy'
   } else {
     group_by <- group_fields
   }
-  # Get coverage by observation at all requested UI levels
+
+  ## RUN DIFFERENT COVERAGE TESTS DEPENDING ON BINOM_SIM
+  if(binom_sim){
+    ## CASE: Using binomial simulation
+    dt_for_covg[, obsfld := get(num_field) ]
+    # Get all draws and denominators matrices with the same dimensions
+    ndraws <- length(draw_fields)
+    draws_mat <- as.matrix(dt_for_covg[, ..draw_fields])
+    denoms_mat <- as.matrix(rep(dt_for_covg[[denom_field]], ndraws), ncol=ndraws)
+    binom_samples <- matrix(rbinom(draws_mat, denoms_mat, draws_mat), ncol=ndraws)
+    dt_for_covg[, draw_fields] <- as.data.table(binom_samples)
+  } else {
+    ## CASE: Using probabilities directly
+    # Get coverage by observation at all requested UI levels
+    dt_for_covg[, obsfld := get(num_field) / get(denom_field) ]
+  }
+
+  # Compare observation field to draw fields
   covg_fields <- character(0)
   for(this_lev in coverage_levels){
     # Example coverage field name: 95% UI -> covg0950
@@ -161,6 +180,7 @@ calculate_coverage <- function(
     ]
     dt_for_covg[, c('c_lower', 'c_upper') := NULL ]
   }
+
   # Aggregate across observations
   coverage_dt <- dt_for_covg[, lapply(.SD, mean), .SDcols=covg_fields, by=group_by]
   # Clean up and return
