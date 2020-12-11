@@ -35,7 +35,9 @@ calculate_rmse_rse <- function(
     stop("Missing fields for RMSE calculation:" , paste(missing_cols, collapse=', '))
   }
   # If no grouping field is specified, make a dummy field
-  dt_for_error <- data.table::copy(in_data[, ..reqd_cols])
+  oos_cols <- c('year', 'age_group_code', 'location_code', 'week')
+  keep_cols <- c(reqd_cols, oos_cols)
+  dt_for_error <- data.table::copy(in_data[, ..keep_cols])
   if(length(group_fields) == 0){
     dt_for_error[, agg_dummy := 1 ]
     group_by <- 'agg_dummy'
@@ -48,14 +50,43 @@ calculate_rmse_rse <- function(
   dt_for_error[, wgtfld := get(denom_field)/sum(get(denom_field)), by = group_by]
   # Get the mean across observations as a baseline for RSE
   dt_for_error[, baseline := sum(get(num_field))/sum(get(denom_field)), by = group_by]
+  # Calculate an alternate baseline value, which is mean across observations
+  #  by age group only
+  if('age_group_code' %in% colnames(dt_for_error)){
+    dt_for_error[, bl_by_age := sum(get(num_field))/sum(get(denom_field)), by = age_group_code]
+  } else {
+    dt_for_error[, bl_by_age := as.numeric(NA) ]
+  }
+  # Calculate an OOS baseline, which is the mean observation across all other
+  #  years for a particular location, week, and age group
+  compare_years <- na.omit(unique(dt_for_error$year))
+  if(all(oos_cols %in% colnames(dt_for_error)) & (length(compare_years) > 0)){
+    oos_grps <- setdiff(oos_cols, 'year')
+    oos_compare_dt <- rbindlist(compare_years, function(oosyr){
+      oosdt <- copy(dt_for_error[
+        year != oosyear,
+        bl_oos := sum(get(num_field))/sum(get(denom_field)),
+        by = oos_grps
+      ])
+      oosdt[, year := oosdt ]
+      return(oosdt)
+    })
+    # Merge out-of-sample estimates back onto the original value
+    dt_for_error[oos_compare_dt, bl_oos := i.bl_oos, on = oos_cols]
+  } else {
+    dt_for_error[, bl_oos := as.numeric(NA) ]
+  }
   # Aggregate to get RMSE and RSE, weighted and unweighted
+  dt_for_error[, sq_resid := (estfld - obsfld)**2]
   error_dt <- dt_for_error[, .(
-      rmse = sqrt(sum((estfld - obsfld)**2)/.N),
-      rmse_weighted = sqrt(sum(wgtfld * (estfld - obsfld)**2) / sum(wgtfld)),
-      rse = sum((estfld - obsfld)**2) / sum((baseline - obsfld)**2),
-      rse_weighted = (
-        sum(wgtfld * (estfld - obsfld)**2) / sum(wgtfld * (baseline - obsfld)**2)
-      )
+      rmse = sqrt(sum(sq_resid)/.N),
+      rmse_weighted = sqrt(sum(wgtfld * sq_resid) / sum(wgtfld)),
+      rse = sum(sq_resid) / sum((baseline - obsfld)**2),
+      rse_weighted = (sum(wgtfld*sq_resid) / sum(wgtfld*(baseline-obsfld)**2)),
+      rse_by_age = sum(sq_resid) / sum((bl_by_age-obsfld)**2),
+      rse_by_age_weighted = (sum(wgtfld*sq_resid) / sum(wgtfld*(bl_by_age-obsfld)**2)),
+      rse_vs_oos = sum(sq_resid) / sum((bl_oos-obsfld)**2),
+      rse_vs_oos_weighted = (sum(wgtfld*sq_resid) / sum(wgtfld*(bl_oos-obsfld)**2))
     ),
     by = group_by
   ]
