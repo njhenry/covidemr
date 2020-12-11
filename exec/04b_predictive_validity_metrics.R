@@ -32,8 +32,7 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## Load run-specific settings from command line
 ap <- argparse::ArgumentParser(
-  description='COVID Excess Mortality: Generate predictive validity metrics',
-  allow_abbrev=FALSE
+  description='COVID Excess Mortality: Generate predictive validity metrics'
 )
 ap$add_argument('--run-sex', type='character', help='Sex-specific model to run')
 ap$add_argument('--data-version', type='character', help='Prepped data version date')
