@@ -17,8 +17,8 @@ devtools::load_all(dev_fp)
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## Run settings
-prepped_data_version <- '20201104'
-model_run_version <- '20201104f3fageloc'
+prepped_data_version <- '20201203'
+model_run_version <- '20201211f3fageloc'
 
 # Helper function to create a filepath for a particular prepped data object
 prep_dir <- file.path(config$paths$prepped_data, prepped_data_version)
@@ -132,7 +132,7 @@ fill_grps <- c(
 fill_colors <- c('#b3ffec','#b3b3b3','#FFFFB2','#FECC5C','#FD8D3C','#F03B20','#BD0026')
 names(fill_colors) <- fill_grps
 
-for(week_id in (start_week):end_week){
+for(week_id in start_week:end_week){
   plot_title <- paste("Week of", wk_starts[week == week_id, date_plot ])
   plot_dt <- agg_summ[week == week_id, ]
   # Assign fill colors
@@ -514,7 +514,7 @@ age_sex_dt$ex_upper <- age_sex_dt$deaths-rowQuantiles(as.matrix(age_sex_dt[, ..d
 age_sex_dt <- age_sex_dt[, -draw_col_names, with = FALSE ]
 
 knitr::kable(age_sex_dt[, .(age_group_name, sex, ex_mean, ex_lower, ex_upper)])
-
+fwrite(age_sex_dt, file=file.path(viz_dir, 'natl_excess_by_age_sex.csv'))
 
 ## Make regional map showing COVID deaths per 100k population prior to Aug 31 --
 
