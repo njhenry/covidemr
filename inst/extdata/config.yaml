@@ -47,7 +47,7 @@ results_files:
   proportion_draws: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_proportion_draws.csv'
   excess_summary: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_excess_summary.csv'
 model_years: [2015, 2016, 2017, 2018, 2019, 2020]
-age_cutoffs: [0, 50, 60, 70, 80, 90]
+age_cutoffs: [0, 45, 60, 75, 90]
 model_week_range: [1, 52]
 num_draws: 1000
 projection: "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs"
