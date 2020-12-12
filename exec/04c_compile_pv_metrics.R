@@ -13,7 +13,7 @@ dev_fp <- '~/repos/covidemr/'
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 # TODO: convert to CLI
-compare_runs <- c('20201103f2','20201103f3','20201103f2fage','20201103f3fageloc')
+compare_runs <- c('20201211f1fageloc','20201211f2fageloc','20201211f3fageloc')
 is_oos <- 'is'
 
 results_list <- list(
