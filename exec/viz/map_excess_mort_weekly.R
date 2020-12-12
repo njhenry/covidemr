@@ -554,7 +554,7 @@ covidemr::map_ita_choropleth_region(
   titles_list = list(
     title = 'Italy: COVID mortality by region prior to 31 August',
     fill = 'Deaths\nper 100,000\npopulation'),
-  save_fp = file.path(viz_dir, 'COVID_deaths_per_100k')
+  save_fp = file.path(viz_dir, 'COVID_deaths_per_100k.png')
 )
 
 
