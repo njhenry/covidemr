@@ -6,8 +6,8 @@
 ENV_NAME=${1:-r_env}
 
 conda activate base &&
-  conda create -n $ENV_NAME -y -c conda-forge r-base=4 gxx_linux-64 gdal r-sf \
-    r-devtools r-renv &&
+  conda create -n $ENV_NAME -y -c conda-forge r-base=4 gxx_linux-64 gdal \
+    r-codetools r-sf r-devtools r-renv &&
   conda activate $ENV_NAME &&
   pip install -U radian &&
   R --vanilla -e "devtools::install_github('jalvesaq/colorout')";
