@@ -501,20 +501,124 @@ png(
 plot(excess_age_week_plot)
 dev.off()
 
-# Get overall excess with UIs by age group and sex nationally
+# Get overall excess with UIs by age group and sex *nationally*
 age_sex_dt <- copy(exp_draws[ !is.na(pop) & week %in% 9:21 , ])
 for(dcol in draw_col_names) age_sex_dt[, (dcol) := get(dcol) * pop ]
-age_sex_dt <- age_sex_dt[,
+age_sex_dt_agg <- age_sex_dt[,
     lapply(.SD, sum), .SDcols = c('deaths', draw_col_names),
     by=c('age_group_code', 'sex')
   ][age_groups_dt, age_group_name := i.age_group_name, on='age_group_code']
-age_sex_dt$ex_mean <- age_sex_dt$deaths-rowMeans(age_sex_dt[, ..draw_col_names])
-age_sex_dt$ex_lower <- age_sex_dt$deaths-rowQuantiles(as.matrix(age_sex_dt[, ..draw_col_names]), probs=.975)
-age_sex_dt$ex_upper <- age_sex_dt$deaths-rowQuantiles(as.matrix(age_sex_dt[, ..draw_col_names]), probs=.025)
-age_sex_dt <- age_sex_dt[, -draw_col_names, with = FALSE ]
+age_sex_dt_agg$ex_mean <- age_sex_dt_agg$deaths-rowMeans(age_sex_dt_agg[, ..draw_col_names])
+age_sex_dt_agg$ex_lower <- age_sex_dt_agg$deaths-rowQuantiles(as.matrix(age_sex_dt_agg[, ..draw_col_names]), probs=.975)
+age_sex_dt_agg$ex_upper <- age_sex_dt_agg$deaths-rowQuantiles(as.matrix(age_sex_dt_agg[, ..draw_col_names]), probs=.025)
+age_sex_dt_agg <- age_sex_dt_agg[, -draw_col_names, with = FALSE ]
+# --
+age_dt_agg <- age_sex_dt[,
+    lapply(.SD, sum), .SDcols = c('deaths', draw_col_names), by=c('age_group_code')
+  ][age_groups_dt, age_group_name := i.age_group_name, on='age_group_code']
+age_dt_agg$ex_mean <- age_dt_agg$deaths-rowMeans(age_dt_agg[, ..draw_col_names])
+age_dt_agg$ex_lower <- age_dt_agg$deaths-rowQuantiles(as.matrix(age_dt_agg[, ..draw_col_names]), probs=.975)
+age_dt_agg$ex_upper <- age_dt_agg$deaths-rowQuantiles(as.matrix(age_dt_agg[, ..draw_col_names]), probs=.025)
+age_dt_agg <- age_dt_agg[, -draw_col_names, with = FALSE ]
+# --
+sex_dt_agg <- age_sex_dt[,
+    lapply(.SD, sum), .SDcols = c('deaths', draw_col_names), by=c('sex')
+  ]
+sex_dt_agg$ex_mean <- sex_dt_agg$deaths-rowMeans(sex_dt_agg[, ..draw_col_names])
+sex_dt_agg$ex_lower <- sex_dt_agg$deaths-rowQuantiles(as.matrix(sex_dt_agg[, ..draw_col_names]), probs=.975)
+sex_dt_agg$ex_upper <- sex_dt_agg$deaths-rowQuantiles(as.matrix(sex_dt_agg[, ..draw_col_names]), probs=.025)
+sex_dt_agg <- sex_dt_agg[, -draw_col_names, with = FALSE ]
 
-knitr::kable(age_sex_dt[, .(age_group_name, sex, ex_mean, ex_lower, ex_upper)])
-fwrite(age_sex_dt, file=file.path(viz_dir, 'natl_excess_by_age_sex.csv'))
+
+knitr::kable(age_sex_dt_agg[, .(age_group_name, sex, ex_mean, ex_lower, ex_upper)])
+fwrite(age_sex_dt_agg, file=file.path(viz_dir, 'natl_excess_by_age_sex.csv'))
+knitr::kable(age_dt_agg[, .(age_group_name, ex_mean, ex_lower, ex_upper)])
+fwrite(age_dt_agg, file=file.path(viz_dir, 'natl_excess_by_age.csv'))
+knitr::kable(sex_dt_agg[, .(sex, ex_mean, ex_lower, ex_upper)])
+fwrite(sex_dt_agg, file=file.path(viz_dir, 'natl_excess_by_sex.csv'))
+
+# Do the same *by region*
+age_sex_reg_dt_agg <- age_sex_dt[,
+    lapply(.SD, sum), .SDcols = c('deaths', draw_col_names),
+    by=c('age_group_code', 'sex', 'region_code')
+  ][age_groups_dt, age_group_name := i.age_group_name, on='age_group_code'
+  ][location_table, region_name := i.region_name, on='region_code']
+age_sex_reg_dt_agg$ex_mean <- age_sex_reg_dt_agg$deaths-rowMeans(age_sex_reg_dt_agg[, ..draw_col_names])
+age_sex_reg_dt_agg$ex_lower <- age_sex_reg_dt_agg$deaths-rowQuantiles(as.matrix(age_sex_reg_dt_agg[, ..draw_col_names]), probs=.975)
+age_sex_reg_dt_agg$ex_upper <- age_sex_reg_dt_agg$deaths-rowQuantiles(as.matrix(age_sex_reg_dt_agg[, ..draw_col_names]), probs=.025)
+age_sex_reg_dt_agg <- age_sex_reg_dt_agg[, -draw_col_names, with = FALSE ]
+# --
+age_reg_dt_agg <- age_sex_dt[,
+    lapply(.SD, sum), .SDcols = c('deaths', draw_col_names), by=c('age_group_code', 'region_code')
+  ][age_groups_dt, age_group_name := i.age_group_name, on='age_group_code'
+  ][location_table, region_name := i.region_name, on='region_code']
+age_reg_dt_agg$ex_mean <- age_reg_dt_agg$deaths-rowMeans(age_reg_dt_agg[, ..draw_col_names])
+age_reg_dt_agg$ex_lower <- age_reg_dt_agg$deaths-rowQuantiles(as.matrix(age_reg_dt_agg[, ..draw_col_names]), probs=.975)
+age_reg_dt_agg$ex_upper <- age_reg_dt_agg$deaths-rowQuantiles(as.matrix(age_reg_dt_agg[, ..draw_col_names]), probs=.025)
+age_reg_dt_agg <- age_reg_dt_agg[, -draw_col_names, with = FALSE ]
+# --
+sex_reg_dt_agg <- age_sex_dt[,
+    lapply(.SD, sum), .SDcols = c('deaths', draw_col_names), by=c('sex', 'region_code')
+  ][location_table, region_name := i.region_name, on='region_code']
+sex_reg_dt_agg$ex_mean <- sex_reg_dt_agg$deaths-rowMeans(sex_reg_dt_agg[, ..draw_col_names])
+sex_reg_dt_agg$ex_lower <- sex_reg_dt_agg$deaths-rowQuantiles(as.matrix(sex_reg_dt_agg[, ..draw_col_names]), probs=.975)
+sex_reg_dt_agg$ex_upper <- sex_reg_dt_agg$deaths-rowQuantiles(as.matrix(sex_reg_dt_agg[, ..draw_col_names]), probs=.025)
+sex_reg_dt_agg <- sex_reg_dt_agg[, -draw_col_names, with = FALSE ]
+# --
+reg_dt_agg <- age_sex_dt[,
+    lapply(.SD, sum), .SDcols = c('deaths', draw_col_names), by=c('region_code')
+  ][location_table, region_name := i.region_name, on='region_code']
+reg_dt_agg$ex_mean <- reg_dt_agg$deaths-rowMeans(reg_dt_agg[, ..draw_col_names])
+reg_dt_agg$ex_lower <- reg_dt_agg$deaths-rowQuantiles(as.matrix(reg_dt_agg[, ..draw_col_names]), probs=.975)
+reg_dt_agg$ex_upper <- reg_dt_agg$deaths-rowQuantiles(as.matrix(reg_dt_agg[, ..draw_col_names]), probs=.025)
+reg_dt_agg <- reg_dt_agg[, -draw_col_names, with = FALSE ]
+
+fwrite(age_sex_reg_dt_agg, file=file.path(viz_dir, 'regional_excess_by_age_sex.csv'))
+fwrite(age_reg_dt_agg, file=file.path(viz_dir, 'regional_excess_by_age.csv'))
+fwrite(sex_reg_dt_agg, file=file.path(viz_dir, 'regional_excess_by_sex.csv'))
+fwrite(reg_dt_agg, file=file.path(viz_dir, 'regional_excess.csv'))
+
+# Do the same *by province*
+age_sex_prov_dt_agg <- age_sex_dt[,
+    lapply(.SD, sum), .SDcols = c('deaths', draw_col_names),
+    by=c('age_group_code', 'sex', 'location_code')
+  ][age_groups_dt, age_group_name := i.age_group_name, on='age_group_code'
+  ][location_table, location_name := i.location_name, on='location_code']
+age_sex_prov_dt_agg$ex_mean <- age_sex_prov_dt_agg$deaths-rowMeans(age_sex_prov_dt_agg[, ..draw_col_names])
+age_sex_prov_dt_agg$ex_lower <- age_sex_prov_dt_agg$deaths-rowQuantiles(as.matrix(age_sex_prov_dt_agg[, ..draw_col_names]), probs=.975)
+age_sex_prov_dt_agg$ex_upper <- age_sex_prov_dt_agg$deaths-rowQuantiles(as.matrix(age_sex_prov_dt_agg[, ..draw_col_names]), probs=.025)
+age_sex_prov_dt_agg <- age_sex_prov_dt_agg[, -draw_col_names, with = FALSE ]
+# --
+age_prov_dt_agg <- age_sex_dt[,
+    lapply(.SD, sum), .SDcols = c('deaths', draw_col_names), by=c('age_group_code', 'location_code')
+  ][age_groups_dt, age_group_name := i.age_group_name, on='age_group_code'
+  ][location_table, location_name := i.location_name, on='location_code']
+age_prov_dt_agg$ex_mean <- age_prov_dt_agg$deaths-rowMeans(age_prov_dt_agg[, ..draw_col_names])
+age_prov_dt_agg$ex_lower <- age_prov_dt_agg$deaths-rowQuantiles(as.matrix(age_prov_dt_agg[, ..draw_col_names]), probs=.975)
+age_prov_dt_agg$ex_upper <- age_prov_dt_agg$deaths-rowQuantiles(as.matrix(age_prov_dt_agg[, ..draw_col_names]), probs=.025)
+age_prov_dt_agg <- age_prov_dt_agg[, -draw_col_names, with = FALSE ]
+# --
+sex_prov_dt_agg <- age_sex_dt[,
+    lapply(.SD, sum), .SDcols = c('deaths', draw_col_names), by=c('sex', 'location_code')
+  ][location_table, location_name := i.location_name, on='location_code']
+sex_prov_dt_agg$ex_mean <- sex_prov_dt_agg$deaths-rowMeans(sex_prov_dt_agg[, ..draw_col_names])
+sex_prov_dt_agg$ex_lower <- sex_prov_dt_agg$deaths-rowQuantiles(as.matrix(sex_prov_dt_agg[, ..draw_col_names]), probs=.975)
+sex_prov_dt_agg$ex_upper <- sex_prov_dt_agg$deaths-rowQuantiles(as.matrix(sex_prov_dt_agg[, ..draw_col_names]), probs=.025)
+sex_prov_dt_agg <- sex_prov_dt_agg[, -draw_col_names, with = FALSE ]
+# --
+prov_dt_agg <- age_sex_dt[,
+    lapply(.SD, sum), .SDcols = c('deaths', draw_col_names), by=c('location_code')
+  ][location_table, location_name := i.location_name, on='location_code']
+prov_dt_agg$ex_mean <- prov_dt_agg$deaths-rowMeans(prov_dt_agg[, ..draw_col_names])
+prov_dt_agg$ex_lower <- prov_dt_agg$deaths-rowQuantiles(as.matrix(prov_dt_agg[, ..draw_col_names]), probs=.975)
+prov_dt_agg$ex_upper <- prov_dt_agg$deaths-rowQuantiles(as.matrix(prov_dt_agg[, ..draw_col_names]), probs=.025)
+prov_dt_agg <- prov_dt_agg[, -draw_col_names, with = FALSE ]
+
+fwrite(age_sex_prov_dt_agg, file=file.path(viz_dir, 'provincial_excess_by_age_sex.csv'))
+fwrite(age_prov_dt_agg, file=file.path(viz_dir, 'provincial_excess_by_age.csv'))
+fwrite(sex_prov_dt_agg, file=file.path(viz_dir, 'provincial_excess_by_sex.csv'))
+fwrite(prov_dt_agg, file=file.path(viz_dir, 'provincial_excess_by_sex.csv'))
+
 
 ## Make regional map showing COVID deaths per 100k population prior to Aug 31 --
 
