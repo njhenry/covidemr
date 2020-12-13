@@ -185,7 +185,7 @@ for(covar_name in covar_names){
 
 # Set out-of-sample fold
 template_dt[, idx_holdout := year - 2014]
-templat_dt[ week < 9, idx_holdout := 6 ]
+template_dt[ week < 9, idx_holdout := 6 ]
 
 # Drop weeks after last observed
 template_dt <- template_dt[(year < 2020) | (week <= final_obs_week), ]
