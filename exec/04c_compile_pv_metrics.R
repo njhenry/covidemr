@@ -47,5 +47,5 @@ for(ii in 1:length(compare_runs)){
 
 final_results <- rbindlist(lapply(results_list, rbindlist))
 
-out_fp <- glue::glue('{config$paths$model_results}/compare_model_pv_{Sys.Date()}.csv')
+out_fp <- glue::glue('{config$paths$model_results}/compare_model_{is_oos}_pv_{Sys.Date()}.csv')
 fwrite(final_results, file=out_fp)
