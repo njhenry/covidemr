@@ -19,8 +19,7 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## TODO: Load using command line argument
 parser <- argparse::ArgumentParser(
-  description='COVID Excess Mortality: Pre-modeling data prep script',
-  allow_abbrev=FALSE
+  description='COVID Excess Mortality: Pre-modeling data prep script'
 )
 parser$add_argument('--data-version', type='character', help='Prepped data version')
 args <- parser$parse_args(commandArgs(TRUE))
