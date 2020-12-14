@@ -7,6 +7,7 @@
 ## Load required packages and inputs
 
 # library(covidemr)
+library(argparse)
 library(data.table)
 library(RColorBrewer)
 library(sp)
@@ -17,8 +18,14 @@ devtools::load_all(dev_fp)
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## Run settings
-prepped_data_version <- '20201213'
-model_run_version <- '20201213f3fal'
+parser <- argparse::ArgumentParser(
+  description='COVID Excess Mortality: viz script'
+)
+parser$add_argument('--data-version', type='character', help='Prepped data version')
+parser$add_argument('--model-version', type='character', help='Model run date')
+args <- parser$parse_args(commandArgs(TRUE))
+prepped_data_version <- args$data_version
+model_run_version <- args$model_version
 
 # Helper function to create a filepath for a particular prepped data object
 prep_dir <- file.path(config$paths$prepped_data, prepped_data_version)
