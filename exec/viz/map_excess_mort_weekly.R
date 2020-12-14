@@ -17,8 +17,8 @@ devtools::load_all(dev_fp)
 config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 ## Run settings
-prepped_data_version <- '20201203'
-model_run_version <- '20201211f3fageloc'
+prepped_data_version <- '20201213'
+model_run_version <- '20201213f3fal'
 
 # Helper function to create a filepath for a particular prepped data object
 prep_dir <- file.path(config$paths$prepped_data, prepped_data_version)
@@ -303,7 +303,7 @@ agg_wk_cumul_summ <- agg_wk_cumul[, -draw_col_names, with = FALSE ]
 ## Aggregate deaths by province across the 9-21 week range ---------------------
 
 agg_counts <- copy(agg_draws)[ year == 2020 & week %in% 9:21, ]
-for(dcol in draw_col_names) agg_counts[, (dcol) := get(dcol) * pop ]
+for(dcol in draw_col_names) agg_counts[, (dcol) := get(dcol) * pop * observed_days / 7 ]
 agg_counts$ct_mean <- rowMeans(agg_counts[, ..draw_col_names])
 agg_counts$ct_lower <- rowQuantiles(as.matrix(agg_counts[, ..draw_col_names]), probs=.025)
 agg_counts$ct_upper <- rowQuantiles(as.matrix(agg_counts[, ..draw_col_names]), probs=.975)
@@ -517,20 +517,25 @@ agg_ex_smrs_save <- function(dt, group_cols, out_fp, printout = TRUE){
   keep_cols <- c(
     group_cols, 'ex_mean','ex_lower','ex_upper','smr_mean','smr_lower','smr_upper'
   )
-  if(printout) knitr::kable(dt_agg[, ..keep_cols])
   fwrite(dt_agg[, ..keep_cols], file = out_fp)
-  invisible()
+  if(printout){
+    knitr::kable(dt_agg[, ..keep_cols])
+  } else {
+    invisible()
+  }
 }
 
 # Get overall excess with UIs by age group and sex *nationally*
 age_sex_dt <- copy(exp_draws[ !is.na(pop) & week %in% 9:21 , ])
-for(dcol in draw_col_names) age_sex_dt[, (dcol) := get(dcol) * pop ]
+for(dcol in draw_col_names) age_sex_dt[, (dcol) := get(dcol) * pop * observed_days / 7 ]
 age_sex_dt[
     location_table,
     `:=` (region_code = i.region_code, region_name = i.region_name, location_name = i.location_name),
     on = 'location_code'
-  ][age_groups_dt, age_group_name := i.age_group_name, on='age_group_code']
+  ][age_groups_dt, age_group_name := i.age_group_name, on='age_group_code'
+  ][, dummy := 1 ]
 
+agg_ex_smrs_save(age_sex_dt, group_cols=c('dummy'), out_fp=file.path(viz_dir,'natl_excess_all.csv'))
 agg_ex_smrs_save(age_sex_dt, group_cols=c('age_group_name','sex'), out_fp=file.path(viz_dir,'natl_excess_by_age_sex.csv'))
 agg_ex_smrs_save(age_sex_dt, group_cols=c('sex'), out_fp=file.path(viz_dir,'natl_excess_by_sex.csv'))
 agg_ex_smrs_save(age_sex_dt, group_cols=c('age_group_name'), out_fp=file.path(viz_dir,'natl_excess_by_age.csv'))
