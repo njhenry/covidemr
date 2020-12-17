@@ -310,7 +310,7 @@ agg_wk_cumul_summ <- agg_wk_cumul[, -draw_col_names, with = FALSE ]
 ## Aggregate deaths by province across the 9-21 week range ---------------------
 
 agg_counts <- copy(agg_draws)[ year == 2020 & week %in% 9:21, ]
-for(dcol in draw_col_names) agg_counts[, (dcol) := get(dcol) * pop * observed_days / 7 ]
+for(dcol in draw_col_names) agg_counts[, (dcol) := get(dcol) * pop ]
 agg_counts$ct_mean <- rowMeans(agg_counts[, ..draw_col_names])
 agg_counts$ct_lower <- rowQuantiles(as.matrix(agg_counts[, ..draw_col_names]), probs=.025)
 agg_counts$ct_upper <- rowQuantiles(as.matrix(agg_counts[, ..draw_col_names]), probs=.975)
@@ -583,6 +583,7 @@ agg_ex_smrs_save(
 
 # Get excess and SMRs only for the north of Italy (regions 1-9)
 northern_subset <- age_sex_dt[region_code %in% 1:9, ]
+agg_ex_smrs_save(northern_subset, group_cols='dummy', out_fp=file.path(viz_dir,'northern_excess_overall.csv'))
 agg_ex_smrs_save(northern_subset, group_cols=c('age_group_name','sex'), out_fp=file.path(viz_dir,'northern_excess_by_age_sex.csv'))
 agg_ex_smrs_save(northern_subset, group_cols=c('sex'), out_fp=file.path(viz_dir,'northern_excess_by_sex.csv'))
 agg_ex_smrs_save(northern_subset, group_cols=c('age_group_name'), out_fp=file.path(viz_dir,'northern_excess_by_age.csv'))
