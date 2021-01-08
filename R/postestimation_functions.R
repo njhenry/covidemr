@@ -402,6 +402,9 @@ summarize_draws <- function(draws){
 #'   - 'pop': Vector of estimated adjusted population for each week of the time
 #'       series. The first week population will always be equal to the value of
 #'       `starting_pop`.
+#'   - 'baseline_deaths': A numeric matrix of size (num weeks) x (num draws)
+#'       giving the estimated NUMBER of baseline deaths, a count, for each week
+#'       and draw.
 #'   - 'smrs': A numeric matrix of size (num weeks) x (num draws) giving the
 #'       estimated standardized mortality ratio associated with each week and
 #'       draw.
@@ -441,13 +444,20 @@ calculate_excess_time_series <- function(
     }
   }
 
-  ## Calculate SMRs and excess deaths by week
-  smrs <- (obs_deaths_vec / adj_pop_vec) / baseline_mat
-  excess_deaths <- obs_deaths_vec - (baseline_mat * adj_pop_vec)
+  ## Calculate baseline deaths, SMRs, and excess deaths by week
+  baseline_deaths <- baseline_mat * adj_pop_vec
+  smrs <- obs_deaths_vec / baseline_deaths
+  excess_deaths <- obs_deaths_vec - baseline_deaths
 
   ## Return as list
-  return(list(pop = adj_pop_vec, smrs = smrs, excess_deaths = excess_deaths))
+  return(list(
+    pop = adj_pop_vec,
+    baseline_deaths = baseline_deaths,
+    smrs = smrs,
+    excess_deaths = excess_deaths
+  ))
 }
+
 
 #' Calculate time series of excess mortality across multiple subpopulations
 #'
@@ -471,7 +481,8 @@ calculate_excess_time_series <- function(
 #' @param pop_col [character] name of the column containing estimated population
 #'   by week, not adjusted (yet) to account for excess mortality.
 #'
-#' @return Named list of two items:
+#' @return Named list of three items:
+#'   - 'baseline_deaths': Data.table of baseline death draws with identifiers
 #'   - 'smrs': Data.table of SMR draws with identifiers
 #'   - 'excess_deaths': Data.table of excess death draws with identifiers
 #'
@@ -509,8 +520,11 @@ calculate_excess_time_series_by_group <- function(
   num_groups <- nrow(subpop_id_dt)
 
   ## Calculate excess mortality and SMRs for each subpopulation
-  smr_list <- vector('list', length=num_groups)
-  excess_deaths_list <- vector('list', length=num_groups)
+  out_data_names <- c('baseline_deaths', 'smrs', 'excess_deaths')
+  lists_by_subpop <- lapply(
+    out_data_names, function(x) vector('list', length=num_groups)
+  )
+  names(lists_by_subpop) <- out_data_names
 
   for(group_idx in 1:num_groups){
     # Subset
@@ -528,38 +542,30 @@ calculate_excess_time_series_by_group <- function(
       starting_pop = max(data_sub_dt[[pop_col]]),
       obs_deaths_vec = data_sub_dt[[obs_death_col]]
     )
-    # Create the excess deaths and SMR sub-data.tables, with identifiers added
-    #  back to the dataset
-    smr_list[[group_idx]] <- cbind(
-      idx_dt,
-      week = data_sub_dt[[week_col]],
-      deaths = data_sub_dt[[obs_death_col]],
-      pop = this_group_excess_list$pop,
-      this_group_excess_list$smrs
-    )
-    excess_deaths_list[[group_idx]] <- cbind(
-      idx_dt,
-      week = data_sub_dt[[week_col]],
-      deaths = data_sub_dt[[obs_death_col]],
-      pop = this_group_excess_list$pop,
-      this_group_excess_list$excess_deaths
-    )
+    # Create the data.tables for each data type, with identifiers added back to
+    #  the dataset
+    for(out_data_name in out_data_names){
+      lists_by_subpop[[out_data_name]][[group_idx]] <- cbind(
+        idx_dt,
+        week = data_sub_dt[[week_col]],
+        deaths = data_sub_dt[[obs_death_col]],
+        pop = this_group_excess_list$pop,
+        this_group_excess_list[[out_data_name]]
+      )
+    }
   }
 
-  ## Combine SMR and excess deaths lists into unified datasets
-  out_list <- list(
-    smrs = rbindlist(smr_list),
-    excess_deaths = rbindlist(excess_deaths_list)
+  ## Combine SMR and excess deaths lists into unified datasets and return
+  out_list <- lapply(
+    out_data_names,
+    function(out_data_name){
+      out_dt <- data.table::rbindlist(lists_by_subpop[[out_data_name]])
+      data.table::setnames(
+        out_dt, c('week', 'deaths', 'pop'), c(week_col, obs_death_col, pop_col)
+      )
+      return(out_dt)
+    }
   )
-  # Ensure that naming matches the input arguments
-  for(sub_dt in names(out_list)){
-    data.table::setnames(
-      out_list[[sub_dt]],
-      c('week', 'deaths', 'pop'),
-      c(week_col, obs_death_col, pop_col)
-    )
-  }
-  # Return
   return(out_list)
 }
 
