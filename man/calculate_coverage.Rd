@@ -10,7 +10,8 @@ calculate_coverage(
   denom_field,
   draw_fields,
   coverage_levels = c(0.5, 0.8, 0.95),
-  group_fields = NULL
+  group_fields = NULL,
+  binom_sim = TRUE
 )
 }
 \arguments{
@@ -30,6 +31,10 @@ intervals to calculate from the posterior predictive draws}
 metrics should be grouped, list the fields to group them by here. If NULL
 (the default), the predictive validity metrics will be calculated across
 the entire dataset}
+
+\item{binom_sim}{[optional, default TRUE] Should the coverage be estimated
+using draws from a predictive binomial distribution (as opposed to a simple
+estimator of population * p)?}
 }
 \value{
 Data.table containing the following fields:
