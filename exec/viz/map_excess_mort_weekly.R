@@ -116,7 +116,7 @@ tictoc::toc()
 
 ## Calculate most-detailed SMRs and excess deaths ------------------------------
 
-tictoc::tic("Calculating excess mortality")
+tictoc::tic("Calculating most-detailed excess mortality")
 
 most_detailed_list <- calculate_excess_time_series_by_group(
   experiment_draw_dt = exp_draws,
@@ -126,6 +126,7 @@ most_detailed_list <- calculate_excess_time_series_by_group(
   obs_death_col = 'deaths',
   pop_col = 'pop'
 )
+baseline_deaths_dt <- most_detailed_list$baseline_deaths
 smrs_dt <- most_detailed_list$smrs
 excess_deaths_dt <- most_detailed_list$excess_deaths
 rm(most_detailed_list)

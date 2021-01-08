@@ -566,6 +566,7 @@ calculate_excess_time_series_by_group <- function(
       return(out_dt)
     }
   )
+  names(out_list) <- out_data_names
   return(out_list)
 }
 
