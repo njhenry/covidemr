@@ -336,6 +336,233 @@ summarize_draws <- function(draws){
   return(as.data.table(summs))
 }
 
+#' Calculate excess mortality time series for a single population
+#'
+#' @description Given draws of a baseline mortality rate, a starting population,
+#'   and weekly deaths, calculate excess deaths, SMRs, and estimated population
+#'   by draw and over the study time period. NOTE: This is a child function to
+#'   estimate these quantities for a single sub-population, and should be called
+#'   repeatedly to estimate excess mortality across different groups.
+#'
+#' @details To calculate excess mortality in a time series, the effect of
+#'   mortality changes on the population denominator must be considered. Without
+#'   complete information about how many people are entering an age group by
+#'   aging in or (for the youngest age group) through birth as opposed to the
+#'   number of people aging out of an age group or dying each week, we make the
+#'   assumption that at baseline mortality, the size of this population subgroup
+#'   would have remained approximately stable. This is a reasonable assumption
+#'   for most populations on the time scale of a few weeks. "Baseline mortality"
+#'   here is estimated as the mean mortality *rate* calculated across all
+#'   predictive draws for baseline mortality, multiplied by the population. The
+#'   difference between the observed number of deaths and the expected baseline
+#'   mortality will be subtracted from the population of future weeks. For
+#'   example:
+#'
+#'     Starting population: 1,000
+#'     Mortality:
+#'      week | mean_baseline_rate | observed_deaths
+#'      -----+--------------------+----------------
+#'       1   |               0.01 |            200
+#'       2   |               0.02 |            100
+#'       3   |               0.01 |             10
+#'
+#'     Week 1:
+#'      * Estimated population size = starting population, 1,000
+#'      * Baseline deaths = 1,000 * 0.01 = 10
+#'      * Excess deaths = 200 - 10 = 190
+#'     Week 2:
+#'      * Estimated population size = 1,000 - 190 = 810
+#'      * Baseline deaths = 810 * 0.02 = 16.2
+#'      * Excess deaths = 100 - 16.2 = 83.8
+#'     Week 3:
+#'      * Estimated population size = 810 - 83.8 = 726.2
+#'      * Baseline deaths = 726.2 * 0.01 = 7.262
+#'      * Excess deaths = 10 - 7.262 = 2.738
+#'
+#'  Note that in the example, there are excess deaths measured in week 3. This
+#'  would not be the case for a time series analysis where the population was
+#'  not adjusted for previous excess deaths.
+#'
+#'  An excess mortality analysis is first run comparing against the mean
+#'  baseline, to estimate population over the time series, and then comparing to
+#'  baseline mortality by draw to calculate SMRs and excess deaths in a way that
+#'  preserves uncertainty.
+#'
+#' @param baseline_mat [numeric] A matrix of the baseline mortality rate by
+#'   week, where each row corresponds to one week of the time series (in order)
+#'   and each column corresponds to a predictive draw of the baseline mortality
+#'   *rate* for that week.
+#' @param starting_pop [numeric] A scalar value giving the population size at
+#'   the beginning of the excess mortality analysis.
+#' @param obs_deaths_vec [numeric] A vector of observed deaths for each week of
+#'   the excess mortality analysis. This vector should be the same length as the
+#'   number of rows in the `baseline_mat`.
+#'
+#' @return A list with three items:
+#'   - 'pop': Vector of estimated adjusted population for each week of the time
+#'       series. The first week population will always be equal to the value of
+#'       `starting_pop`.
+#'   - 'smrs': A numeric matrix of size (num weeks) x (num draws) giving the
+#'       estimated standardized mortality ratio associated with each week and
+#'       draw.
+#'   - 'excess_deaths': A numeric matrix of size (num weeks) x (num draws)
+#'       giving the estimated number of excess deaths, a count, for each week
+#'       and draw.
+#'
+#' @export
+calculate_excess_time_series <- function(
+  baseline_mat, starting_pop, obs_deaths_vec
+){
+  ## Check that input data is formatted correctly
+  errmsg <- function(msg) stop("ERROR IN TIME SERIES CALCULATION: ", msg)
+  if(!is.matrix(baseline_mat)) errmsg("Mortality rates should be a matrix.")
+  if(nrow(baseline_mat) != length(obs_deaths_vec)){
+    errmsg("Number of weeks differ across observed deaths and baseline mortality")
+  }
+  if(length(starting_pop) != 1) errmsg("Starting population should have length 1")
+
+  # Get data dimensions
+  ndraw <- ncol(baseline_mat)
+  nweek <- nrow(baseline_mat)
+
+  ## Adjust population for excess mortality
+  # - Calculate mean expected baseline mortality across all draws
+  bl_mean_vec <- rowMeans(baseline_mat)
+  # - Set up default population vector
+  adj_pop_vec <- rep(starting_pop, nweek)
+  # - Adjust all populations after the first week
+  if(nweek > 1){
+    for(this_wk in 2:nweek){
+      last_wk <- this_wk - 1
+      excess_last_week <- (
+        obs_deaths_vec[last_wk] - (bl_mean_vec[last_wk] * adj_pop_vec[last_wk])
+      )
+      adj_pop_vec[this_wk] <- adj_pop_vec[last_wk] - excess_last_week
+    }
+  }
+
+  ## Calculate SMRs and excess deaths by week
+  smrs <- (obs_deaths_vec / adj_pop_vec) / baseline_mat
+  excess_deaths <- obs_deaths_vec - (baseline_mat * adj_pop_vec)
+
+  ## Return as list
+  return(list(pop = adj_pop_vec, smrs = smrs, excess_deaths = excess_deaths))
+}
+
+#' Calculate time series of excess mortality across multiple subpopulations
+#'
+#' @description Given draws of baseline mortality, observed starting population,
+#'   and observed deaths by week, calculate excess mortality across many
+#'   sub-population groupings. Sub-populations are identified by unique sets
+#'   of ID columns. This is a wrapper for `calculate_excess_time_series()`,
+#'   which calculates excess-adjusted population, excess deaths, and SMRs for a
+#'   single population subgroup.
+#'
+#' @param experiment_draw_dt data.table containing the experimental data ONLY
+#'   for the time period when excess mortality is to be calculated. Should
+#'   contain all of the fields specificied by the other parameters.
+#' @param baseline_draw_col [character] columns in `experiment_draw_dt` that
+#'   contain the draws for predicted baseline mortality rate.
+#' @param group_cols [character] columns in `experiment_draw_dt` with unique
+#'   grouping identifiers. There should be no NULLs in any of these columns.
+#' @param week_col [character] name of the column containing week ID
+#' @param obs_death_col [character] name of the column containing observed
+#'   deaths by week
+#' @param pop_col [character] name of the column containing estimated population
+#'   by week, not adjusted (yet) to account for excess mortality.
+#'
+#' @return Named list of two items:
+#'   - 'smrs': Data.table of SMR draws with identifiers
+#'   - 'excess_deaths': Data.table of excess death draws with identifiers
+#'
+#' @import data.table
+#' @export
+calculate_excess_time_series_by_group <- function(
+  experiment_draw_dt, baseline_draw_cols, group_cols, week_col='week',
+  obs_death_col='deaths', pop_col='pop'
+){
+  # Helper function specifying error reporting in this function
+  errmsg <- function(msg) stop("Error in grouped excess function: ", msg)
+
+  ## Validate input data
+  if(!data.table::is.data.table(experiment_draw_dt)) errmsg(
+    "Dataset must be a data.table."
+  )
+  reqd_cols <- c(baseline_draw_cols, group_cols, week_col, obs_death_col, pop_col)
+  missing_cols <- setdiff(reqd_cols, colnames(experiment_draw_dt))
+  if(length(missing_cols) > 0) errmsg(
+    paste0("Missing required cols: ", missing_cols, collapse=', ')
+  )
+  if(any(is.na(experiment_draw_dt[, ..group_cols]))) errmsg(
+    "Some grouping columns have NAs."
+  )
+  # The grouping columns should not include any of the other columns
+  dupe_cols <- intersect(
+    group_cols,
+    c(baseline_draw_cols, week_col, obs_death_col, pop_col)
+  )
+  if(length(dupe_cols) > 0) errmsg("Group cols and measure cols shouldn't overlap.")
+
+  ## Create data.table idenfying unique subpopulations
+  subpop_id_dt <- unique(experiment_draw_dt[, ..group_cols])
+  subpop_id_dt[, group_id := .I ]
+  num_groups <- nrow(subpop_id_dt)
+
+  ## Calculate excess mortality and SMRs for each subpopulation
+  smr_list <- vector('list', length=num_groups)
+  excess_deaths_list <- vector('list', length=num_groups)
+
+  for(group_idx in 1:num_groups){
+    # Subset
+    idx_dt <- copy(subpop_id_dt[ group_id == group_idx, ])
+    data_sub_dt <- merge(x = idx_dt, y = experiment_draw_dt, by = group_cols)
+    data_sub_dt <- data_sub_dt[order(get(week_col))]
+    # Check that week order is correct and not duplicated
+    if(any(diff(data_sub_dt[[week_col]]) != 1)){
+      message(idx_dt)
+      errmsg("Issue with week ordering in the subgroup listed above.")
+    }
+    # Run the sub-population excess mortality calculation
+    this_group_excess_list <- calculate_excess_time_series(
+      baseline_mat = as.matrix(data_sub_dt[, ..baseline_draw_cols]),
+      starting_pop = max(data_sub_dt[[pop_col]]),
+      obs_deaths_vec = data_sub_dt[[obs_death_col]]
+    )
+    # Create the excess deaths and SMR sub-data.tables, with identifiers added
+    #  back to the dataset
+    smr_list[[group_idx]] <- cbind(
+      idx_dt,
+      week = data_sub_dt[[week_col]],
+      deaths = data_sub_dt[[obs_death_col]],
+      pop = this_group_excess_list$pop,
+      this_group_excess_list$smrs
+    )
+    excess_deaths_list[[group_idx]] <- cbind(
+      idx_dt,
+      week = data_sub_dt[[week_col]],
+      deaths = data_sub_dt[[obs_death_col]],
+      pop = this_group_excess_list$pop,
+      this_group_excess_list$excess_deaths
+    )
+  }
+
+  ## Combine SMR and excess deaths lists into unified datasets
+  out_list <- list(
+    smrs = rbindlist(smr_list),
+    excess_deaths = rbindlist(excess_deaths_list)
+  )
+  # Ensure that naming matches the input arguments
+  for(sub_dt in names(out_list)){
+    data.table::setnames(
+      out_list[[sub_dt]],
+      c('week', 'deaths', 'pop'),
+      c(week_col, obs_death_col, pop_col)
+    )
+  }
+  # Return
+  return(out_list)
+}
+
 
 #' Aggregate data and draws
 #'

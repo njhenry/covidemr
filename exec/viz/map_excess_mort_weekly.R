@@ -12,6 +12,7 @@ library(data.table)
 library(RColorBrewer)
 library(sp)
 library(sf)
+library(tictoc)
 # DEVELOPMENT: rebuild library
 dev_fp <- '~/repos/covidemr/'
 devtools::load_all(dev_fp)
@@ -68,13 +69,17 @@ wk_starts[, day_id := (week - 1) * 7
 
 ## Load draw-level data --------------------------------------------------------
 
+# Start timer for this section
+tictoc::tic('Loading data')
+
 draws_list <- list(male = NULL, female = NULL)
+subpop_cols <- c('location_code', 'age_group_code', 'year', 'sex')
 
 for(run_sex in c('male', 'female')){
   templ_sub <- template_dt[sex == run_sex, ]
   keep_idx <- which(templ_sub[,year == 2020 & week >= start_week & week <= end_week])
   # Combine relevant index and draws
-  id_cols <- c('location_code', 'age_group_code', 'year', 'week', 'sex')
+  id_cols <- c(subpop_cols, 'week')
   draws_list[[run_sex]] <- cbind(
     templ_sub[keep_idx, ..id_cols],
     fread(glue::glue(
@@ -97,8 +102,35 @@ for(run_sex in c('male', 'female')){
 }
 
 exp_draws <- rbindlist(draws_list)
-exp_draws[, deaths := deaths / observed_days * 7 ]
 rm(draws_list)
+
+# Adjust mortality draws for weeks that were not completely observed
+exp_draws[,
+  (draw_col_names) := lapply(.SD, function(col) col / 7 * observed_days),
+  .SDcols = draw_col_names
+]
+
+# End timer for this section
+tictoc::toc()
+
+
+## Calculate most-detailed SMRs and excess deaths ------------------------------
+
+tictoc::tic("Calculating excess mortality")
+
+most_detailed_list <- calculate_excess_time_series_by_group(
+  experiment_draw_dt = exp_draws,
+  baseline_draw_cols = draw_col_names,
+  group_cols = subpop_cols,
+  week_col = 'week',
+  obs_death_col = 'deaths',
+  pop_col = 'pop'
+)
+smrs_dt <- most_detailed_list$smrs
+excess_deaths_dt <- most_detailed_list$excess_deaths
+rm(most_detailed_list)
+
+tictoc::toc()
 
 
 ## Aggregate to the province-week level and estimate excess --------------------
