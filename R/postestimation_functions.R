@@ -471,7 +471,7 @@ calculate_excess_time_series <- function(
 #' @param experiment_draw_dt data.table containing the experimental data ONLY
 #'   for the time period when excess mortality is to be calculated. Should
 #'   contain all of the fields specificied by the other parameters.
-#' @param baseline_draw_col [character] columns in `experiment_draw_dt` that
+#' @param baseline_draw_cols [character] columns in `experiment_draw_dt` that
 #'   contain the draws for predicted baseline mortality rate.
 #' @param group_cols [character] columns in `experiment_draw_dt` with unique
 #'   grouping identifiers. There should be no NULLs in any of these columns.
@@ -571,68 +571,101 @@ calculate_excess_time_series_by_group <- function(
 }
 
 
-#' Aggregate data and draws
+#' Aggregate and summarize excess mortality estimates
 #'
-#' @description Aggregate the draws (rates) and the data (population and deaths)
-#'   by a set of grouping identifiers
+#' @description Given draws of baseline death COUNTS (not rates) and observed
+#'   death counts, calculate summary metrics of excess mortality, optionally
+#'   grouping by fields in the data
 #'
-#' @param in_data Input data.table, including draws (in rate space), the
-#'   numerator and denominator (in count space), and any grouping fields
-#' @param num_field Field containing the data numerator (e.g. deaths)
-#' @param denom_field Field containing the data denominator (e.g. population)
-#' @param draw_fields Character vector of fields containing predictive draws, in
-#'   rate space (e.g. mortality rates)
-#' @param group_fields [optional, default NULL] Character vector containing all
-#'   fields for grouping observations during the aggregation. If this field is
-#'   empty, all data will be aggregated to a single row and returned with no
-#'   identifiers
-#' @param summarize [bool, default TRUE] should summary columns be added for the
-#'   aggregated draws?
+#' @param baseline_deaths_dt data.table containing draws of baseline death
+#'   COUNTS (not rates), observed death counts, and optional identifier columns
+#'   for the period when excess mortality is being calculated
+#' @param aggregate [bool, default FALSE] should the data be aggregated across
+#'   grouping columns?
+#' @param group_cols [char, default NULL] If `aggregate` is TRUE, group by these
+#'   columns when aggregating baseline and observed deaths. If aggregation is
+#'   specified and this argument is left as NULL, the aggregation will occur
+#'   across all rows
+#' @param baseline_draw_cols [character, default c('draw1', ... 'draw1000')]
+#'   columns in `baseline_deaths_dt` that contain the draws for predicted
+#'   baseline death counts
+#' @param obs_death_col [character, default 'deaths'] name of the column in
+#'   `baseline_deaths_dt` containing observed deaths by week
+#' @param alpha [numeric, default 0.05] Cutoff for two-tailed uncertainty
+#'    interval. For example, the default of 0.05 will use the 95% uncertainty
+#'    interval for each outcome
+#'
+#' @return data.table containing at least the following fields:
+#'    - Any grouping columns, if specified
+#'    - `obs_death_col` as specified in the function argument
+#'    - 'bl_<mean/lower/upper>': Mean and UI bounds for baseline death counts
+#'    - 'smr_<mean/lower/upper>': Mean and UI bounds for Standardized Mortality
+#'        Ratios, calculated as observed / baseline
+#'    - 'ex_d_<mean/lower/upper>': Mean and UI bounds for Excess Deaths,
+#'        calculated as observed - baseline
+#'    - 'sig_under1': Did the observed deaths fall BELOW the baseline deaths UI?
+#'    - 'sig_over1': Did the observed deaths fall ABOVE the baseline deaths UI?
 #'
 #' @import data.table matrixStats
 #' @export
-aggregate_data_and_draws <- function(
-  in_data, num_field, denom_field, draw_fields, group_fields = NULL,
-  summarize = TRUE
+aggregate_summarize_excess <- function(
+  baseline_deaths_dt, aggregate = FALSE, group_cols = NULL,
+  baseline_draw_cols = paste0('draw',1:1000), obs_death_col = 'deaths',
+  alpha = 0.05
 ){
-  # Ensure that there are no missing columns
-  missing_cols <- setdiff(
-    c(num_field, denom_field, draw_fields, group_fields), colnames(in_data)
+  ## Check that inputs are valid:
+  errmsg <- function(msg) stop("ERROR in excess mortality summary: ", msg)
+  # Dataset must be in data.table format
+  if(!is.data.table(baseline_deaths_dt)) errmsg("Dataset not in data.table format")
+  # All required fields must be present
+  reqd_cols <- c(group_cols, baseline_draw_cols, obs_death_col)
+  missing_cols <- setdiff(reqd_cols, colnames(baseline_deaths_dt))
+  if(length(missing_cols) > 0) errmsg(
+    paste0("Missing fields: ", missing_cols, collapse=', ')
   )
-  if(length(missing_cols) > 0){
-    stop("Missing fields for aggregation:" , paste(missing_cols, collapse=', '))
-  }
-  to_agg <- data.table::copy(in_data)
-  # If no grouping field is specified, make a dummy grouping field
-  if(length(group_fields) == 0){
-    to_agg[, agg_dummy := 1 ]
-    group_by <- 'agg_dummy'
-  } else {
-    group_by <- group_fields
-  }
-  # Create dummy numerator and denominator columns for ease of aggregation
-  to_agg[, dummy_num := get(num_field) ]
-  to_agg[, dummy_denom := get(denom_field) ]
-  # Run aggregation
-  agg_data <- to_agg[, c(
-      list(dummy_num = sum(dummy_num)),
-      lapply(.SD, function(x) weighted.mean(x, w = dummy_denom))
-    ),
-    .SDcols = draw_fields,
-    by = group_by
-  ]
-  # Clean up
-  if(num_field != 'dummy_num') setnames(agg_data, 'dummy_num', num_field)
-  if(length(group_fields) == 0) agg_data[, agg_dummy := NULL ]
-  # Add summary pred columns
-  if(summarize){
-    agg_data$pred_mean <- rowMeans(agg_data[, ..draw_fields], na.rm=TRUE)
-    agg_data$pred_lower <- matrixStats::rowQuantiles(
-      as.matrix(agg_data[, ..draw_fields]), probs = .025, na.rm = TRUE
-    )
-    agg_data$pred_upper <- matrixStats::rowQuantiles(
-      as.matrix(agg_data[, ..draw_fields]), probs = .975, na.rm = TRUE
+  # No NAs allowed in grouping columns
+  for(gcol in group_cols){
+    if(any(is.na(baseline_deaths_dt[[gcol]]))) errmsg(
+      paste('Grouping column', gcol, 'has NA values.')
     )
   }
-  return(agg_data)
+  # Alpha must be between zero and 1
+  if(!is.numeric(alpha) | alpha < 0 | alpha > 1) errmsg('Alpha must be on [0,1].')
+
+  ## Optionally aggregate data
+  summ_dt <- data.table::copy(baseline_deaths_dt)
+  setnames(summ_dt, obs_death_col, 'deaths')
+  if(aggregate == TRUE){
+    summ_dt <- summ_dt[,
+      lapply(.SD, sum),
+      .SDcols = c(baseline_draw_cols, 'deaths'),
+      by = group_cols
+    ]
+  }
+
+  ## Calculate summary metrics
+  # Baseline death summaries
+  ui_percentiles <- c(alpha/2, 1-alpha/2)
+  summ_dt$bl_mean <- rowMeans(summ_dt[, ..baseline_draw_cols])
+  summ_dt$bl_lower <- matrixStats::rowQuantiles(
+    as.matrix(summ_dt[, ..baseline_draw_cols]), probs=ui_percentiles[1], na.rm=T
+  )
+  summ_dt$bl_upper <- matrixStats::rowQuantiles(
+    as.matrix(summ_dt[, ..baseline_draw_cols]), probs=ui_percentiles[2], na.rm=T
+  )
+  # SMRs and excess deaths
+  summ_dt[, `:=` (
+    smr_mean = deaths / bl_mean, smr_lower = deaths / bl_upper,
+    smr_upper = deaths / bl_lower, ex_d_mean = deaths - bl_mean,
+    ex_d_lower = deaths - bl_upper, ex_d_upper = deaths - bl_lower,
+    sig_under1 = as.integer(deaths < bl_lower),
+    sig_over1 = as.integer(deaths > bl_upper)
+  )]
+
+  ## Clean up and return
+  # Drop draw columns
+  summ_dt[, (baseline_draw_cols) := NULL ]
+  setnames(summ_dt, 'deaths', obs_death_col)
+
+  return(summ_dt)
 }

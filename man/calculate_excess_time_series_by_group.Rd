@@ -18,6 +18,9 @@ calculate_excess_time_series_by_group(
 for the time period when excess mortality is to be calculated. Should
 contain all of the fields specificied by the other parameters.}
 
+\item{baseline_draw_cols}{[character] columns in `experiment_draw_dt` that
+contain the draws for predicted baseline mortality rate.}
+
 \item{group_cols}{[character] columns in `experiment_draw_dt` with unique
 grouping identifiers. There should be no NULLs in any of these columns.}
 
@@ -28,9 +31,6 @@ deaths by week}
 
 \item{pop_col}{[character] name of the column containing estimated population
 by week, not adjusted (yet) to account for excess mortality.}
-
-\item{baseline_draw_col}{[character] columns in `experiment_draw_dt` that
-contain the draws for predicted baseline mortality rate.}
 }
 \value{
 Named list of three items:
