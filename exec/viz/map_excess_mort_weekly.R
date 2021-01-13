@@ -139,6 +139,26 @@ rm(most_detailed_list)
 tictoc::toc()
 
 
+## Define fill colors and breaks -----------------------------------------------
+
+# Breaks used for most choropleths
+fill_grps <- c(
+  'Signif. lower', 'Not signif.', '+ 0% to 20%', '+ 20 to 50%', '+ 50% to 100%',
+  '+ 100 to 200%', '+ >200%'
+)
+fill_colors <- c('#b3ffec','#b3b3b3','#FFFFB2','#FECC5C','#FD8D3C','#F03B20','#BD0026')
+names(fill_colors) <- fill_grps
+
+# Breaks used when highlighting northern provinces
+fill_grps_highlight <- c(
+  '+ 0% to 50%', '+ 50% to 100%', '+ 100% to 200%', '+ 200% to 300%',
+  '+ 300% to 400%', '+ 400% to 500%', '+ >500%'
+)
+fill_colors_highlight <- c(RColorBrewer::brewer.pal('OrRd', n=9)[c(3,5:9)], '#2e051a')
+names(fill_colors_highlight) <- fill_grps_highlight
+fill_brks_highlight <- c(1., 1.5, 2., 3., 4., 5., 6., 1E8)
+
+
 ## Aggregate across various dimensions and estimate excess ---------------------
 
 tictoc::tic("Aggregating excess mortality for plotting")
@@ -201,26 +221,6 @@ summ_by_age_week_focus <- aggregate_summarize_excess(
 
 
 tictoc::toc()
-
-## Define fill colors and breaks -----------------------------------------------
-
-# Breaks used for most choropleths
-fill_grps <- c(
-  'Signif. lower', 'Not signif.', '+ 0% to 20%', '+ 20 to 50%', '+ 50% to 100%',
-  '+ 100 to 200%', '+ >200%'
-)
-fill_colors <- c('#b3ffec','#b3b3b3','#FFFFB2','#FECC5C','#FD8D3C','#F03B20','#BD0026')
-names(fill_colors) <- fill_grps
-
-# Breaks used when highlighting northern provinces
-fill_grps_highlight <- c(
-  '+ 0% to 50%', '+ 50% to 100%', '+ 100% to 200%', '+ 200% to 300%',
-  '+ 300% to 400%', '+ 400% to 500%', '+ >500%'
-)
-fill_colors_highlight <- c(RColorBrewer::brewer.pal('OrRd', n=9)[c(3,5:9)], '#2e051a')
-names(fill_colors_highlight) <- fill_grps_highlight
-fill_brks_highlight <- c(1., 1.5, 2., 3., 4., 5., 6., 1E8)
-
 
 ## Map excess mortality rate by province and week ------------------------------
 
