@@ -654,7 +654,7 @@ agg_then_save <- function(dt, group_cols, out_fp, printout = TRUE){
   )
   fwrite(dt_agg, file = out_fp)
   if(printout){
-    knitr::kable(dt_agg)
+    print(knitr::kable(dt_agg))
     message("")
   } else {
     invisible()
