@@ -151,7 +151,7 @@ calculate_coverage <- function(
     # Get all draws and denominators matrices with the same dimensions
     ndraws <- length(draw_fields)
     draws_mat <- as.matrix(dt_for_covg[, ..draw_fields])
-    denoms_mat <- as.matrix(rep(dt_for_covg[[denom_field]], ndraws), ncol=ndraws)
+    denoms_mat <- matrix(rep(dt_for_covg[[denom_field]], ndraws), ncol=ndraws)
     pois_samples <- matrix(
       rpois(length(draws_mat), denoms_mat * draws_mat),
       ncol=ndraws
