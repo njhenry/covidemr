@@ -35,7 +35,7 @@ prep_dir <- file.path(config$paths$prepped_data, prepped_data_version)
 diag_dir <- file.path(prep_dir, 'diagonstics')
 dir.create(diag_dir, showWarnings=FALSE)
 get_prep_fp <- function(ff) file.path(prep_dir, config$prepped_data_files[[ff]])
-get_diag_fp <- function(ff) file.path(diag_dif, ff)
+get_diag_fp <- function(ff) file.path(diag_dir, ff)
 
 ## Load input data
 location_table <- data.table::fread(get_prep_fp('location_table'), na.strings='')
@@ -55,6 +55,8 @@ vif_results <- get_covar_vif(
 )
 message("VIF results:", appendLF=FALSE)
 print(knitr::kable(vif_results))
+
+fwrite(vif_results, file=get_diag_fp('covariates_VIF.csv'))
 
 
 ## Univariate covariate visualizations -----------------------------------------
