@@ -6,15 +6,16 @@
 ##
 ## -----------------------------------------------------------------------------
 
-message("================= Space-time mortality fitting script ================")
-message("Start time: ", Sys.time())
-message("Script start")
 library(argparse)
 library(data.table)
 library(parallel)
 library(sp)
 library(sf)
 library(tictoc)
+
+message("================= Space-time mortality fitting script ================")
+message("Start time: ", Sys.time())
+tictoc::tic("Full script time")
 
 dev_fp <- '~/repos/covidemr/'
 devtools::load_all(dev_fp)
@@ -45,13 +46,13 @@ ap$add_argument(
 )
 args <- ap$parse_args(commandArgs(TRUE))
 # args <- list(
-#   run_sex = 'female', data_version = '20201203', model_version = '20201203f3fageloc',
+#   run_sex = 'female', data_version = '20210113', model_version = '20210113f3fl',
 #   holdout = 0, use_covs = c(
-#     'intercept', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
+#     'intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
 #     'elevation', 'temperature'
 #   ), use_Z_stwa = FALSE, use_Z_sta = TRUE, use_Z_fourier = TRUE,
 #   use_nugget = FALSE, fourier_levels = 3,
-#   fourier_groups = c('age_group_code', 'location_code')
+#   fourier_groups = c('location_code')
 # )
 message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
@@ -113,13 +114,14 @@ data_stack <- list(
 
 # Find MAP approximation of all model fixed effects. This will be used to set
 #  the starting values for the model
-max_a_priori_list <- covidemr::find_binomial_map_parameter_estimates(
+max_a_priori_list <- suppressWarnings(find_glm_map_parameter_estimates(
   in_data = copy(in_data_final),
-  numerator_field = 'deaths',
-  denominator_field = 'pop',
+  events_field = 'deaths',
+  exposure_field = 'pop',
   covar_names = use_covs,
+  distribution_family = 'poisson',
   grouping_field = 'idx_age'
-)
+))
 map_glm_fit <- max_a_priori_list$glm_fit
 
 params_list <- list(
@@ -191,7 +193,7 @@ model_fit <- covidemr::setup_run_tmb(
   params_list=params_list,
   tmb_random=tmb_random,
   tmb_map=tmb_map,
-  normalize = TRUE, run_symbolic_analysis = TRUE,
+  normalize = TRUE, run_symbolic_analysis = FALSE,
   tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
   model_name="ITA deaths model",
   verbose=TRUE, inner_verbose=FALSE,
@@ -205,8 +207,11 @@ tictoc::toc()
 
 ## Create post-estimation predictive objects -----------------------------------
 
-# Draws of parameters and baseline modeled deaths (assuming no COVID)
 tictoc::tic("Full model postestimation")
+# Optionally set a random seed
+if(!is.null(config$random_seed)) set.seed(as.integer(config$random_seed))
+
+# Draws of parameters and baseline modeled deaths (assuming no COVID)
 postest_list <- vector('list', length = ceiling(config$num_draws / 50))
 for(ii in 1:length(postest_list)){
   postest_list[[ii]] <- covidemr::generate_stwa_draws(
@@ -220,38 +225,28 @@ for(ii in 1:length(postest_list)){
     fourier_harmonics_level = args$fourier_levels
   )
 }
+
+# Column bind draws and identifiers
 cbindlist <- function(a_list) setDT(unlist(a_list, recursive=FALSE))
+#  - Parameter draws
 param_draws <- cbindlist(c(
   list(data.table(parameter = postest_list[[1]]$param_names)),
   lapply(postest_list, function(sl) as.data.table(sl$param_draws))
 ))
 colnames(param_draws) <- c('parameter', paste0('V',1:config$num_draws))
+#  - Predictive draws
 pred_draws <- cbindlist(lapply(postest_list, function(sl) as.data.table(sl$predictive_draws)))
 colnames(pred_draws) <- paste0('V',1:config$num_draws)
 rm(postest_list)
 # Summarize draws
 pred_summary <- cbind(template_dt, summarize_draws(pred_draws))
 
-if(args$holdout == 0){
-  # For in-sample runs, generate additional predictive estimates:
-  # Draws of excess mortality (true deaths - baseline)
-  excess_draws_list <- covidemr::get_excess_death_draws(
-    template_dt = template_dt,
-    baseline_draws = pred_draws,
-    death_data = prepped_data[in_baseline==0,]
-  )
-  excess_index <- excess_draws_list$obs_deaths
-  excess_draws <- excess_draws_list$excess_draws
-  proportion_draws <- excess_draws_list$proportion_draws
-  # Summarize draws
-  prop_summ <- summarize_draws(proportion_draws)
-  names(prop_summ) <- paste0('prop_',names(prop_summ))
-  excess_summary <- cbind(excess_index, summarize_draws(excess_draws), prop_summ)
-} else {
+if(args$holdout != 0){
   # FOR OUT-OF-SAMPLE RUNS ONLY: Keep only the OOS data subset
   pred_sub_idx <- which(pred_summary$idx_holdout == args$holdout)
   pred_draws <- pred_draws[ pred_sub_idx , ]
 }
+
 tictoc::toc()
 
 
@@ -261,22 +256,14 @@ out_file_stub <- sprintf("%s_holdout%i", args$run_sex, args$holdout)
 out_dir <- file.path(config$paths$model_results, args$model_version)
 dir.create(out_dir, showWarnings = FALSE)
 
-## Save all model output files
 model_results_dir <- config$path$model_results
 model_run_version <- args$model_version
 run_sex <- args$run_sex
 holdout <- args$holdout
 
 # Always write out args and config
-yaml::write_yaml(args, file = glue::glue(
-  '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_model_args.yaml'
-))
-yaml::write_yaml(config, file = glue::glue(
-  '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_model_config.yaml'
-))
-
 if(holdout != 0){
-  save_objs <- c('model_fit','pred_draws')
+  save_objs <- c('args', 'config', 'model_fit','pred_draws')
 } else {
   save_objs <- names(config$results_files)
 }
@@ -290,10 +277,13 @@ for(obj_str in save_objs){
     saveRDS(get(obj_str), file = out_fp)
   } else if(endsWith(tolower(out_fp), 'csv')){
     fwrite(get(obj_str), file = out_fp, row.names = FALSE)
+  } else if(endsWith(tolower(out_fp), 'yaml')){
+    yaml::write_yaml(get(obj_str), file=out_fp)
   } else {
     stop(sprintf("Save function not enabled for file type of %s", out_fp))
   }
 }
 
 message("Model fitting script COMPLETE")
+tictoc::toc()
 message("End time: ", Sys.time())
