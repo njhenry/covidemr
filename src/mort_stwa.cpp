@@ -173,8 +173,9 @@ Type objective_function<Type>::operator() () {
     vector<Type> fes_i(num_obs);
     vector<Type> struct_res_i(num_obs);
 
-    // Create a vector to hold individual data estimates
-    vector<Type> logit_prob_i(num_obs);
+    // Create a vector to hold data-specific estimates of the mortality rate
+    //   per person-week
+    vector<Type> weekly_mort_rate_i(num_obs);
 
     // Harmonic frequency of 1 year (52 weeks)
     Type year_freq = 2.0 * 3.1415926535 / 52.0;
@@ -278,12 +279,13 @@ Type objective_function<Type>::operator() () {
           struct_res_i(i) += nugget(i);
         }
 
-        // Determine logit probability for this observation
-        logit_prob_i(i) = fes_i(i) + beta_ages(idx_age(i)) + struct_res_i(i);
+        // Determine most likely weekly mortality rate for this observation
+        weekly_mort_rate_i(i) = exp(fes_i(i) + beta_ages(idx_age(i)) + struct_res_i(i));
 
-        // Use the dbinom_robust PDF function, parameterized using logit(prob)
-        PARALLEL_REGION jnll -= dbinom_robust(\
-            y_i(i), n_i(i) * days_exp_i(i) / 7.0, logit_prob_i(i), true\
+        // Use the dpois PDF function centered around:
+        //  lambda = population * weekly mort rate * (observed days / 7)
+        PARALLEL_REGION jnll -= dpois(\
+            y_i(i), n_i(i) * weekly_mort_rate_i(i) * days_exp_i(i) / 7.0, true\
         );
       }
     }

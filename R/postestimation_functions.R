@@ -241,8 +241,8 @@ generate_stwa_draws <- function(
     res <- res + z_fourier[templ$f_row, ]
   }
 
-  logit_preds <- cov_fes + age_fes + res
-  preds <- exp(logit_preds) / (1 + exp(logit_preds))
+  log_preds <- cov_fes + age_fes + res
+  preds <- exp(log_preds)
   # Reorder by the original row ordering
   templ <- templ[order(row_id)]
   preds <- preds[templ$sorted_row_id, ]
@@ -251,67 +251,6 @@ generate_stwa_draws <- function(
     param_names = parnames,
     param_draws = param_draws,
     predictive_draws = preds
-  ))
-}
-
-
-#' Get draws of excess deaths
-#'
-#' @description The traditional calculation for COVID excess mortality
-#'   calculates excess deaths by subtracting the observed number of deaths from
-#'   an estimated baseline. This function subtracts the observed value (a
-#'   single value) from the baseline (by draw) to get draws of excess.
-#'
-#' @param baseline_draws Predicted draws for the number of deaths that would
-#'   occur in the absence of COVID
-#' @param template_dt The template data.table linking predictive draws
-#' @param death_data Dataset containing the true number of deaths by location,
-#'   year, week, and age group. The true deaths will be matched to the predicted
-#'   counterfactual deaths (by way of the `template_dt`) and one subtracted from
-#'   the other to estimate excess.
-#'
-#' @return Named list containing three items:
-#'   - 'obs_deaths': Data.table of observed deaths
-#'   - 'excess_draws': Matrix containing excess mortality draws by
-#'       location/year/week/age. Each row of this matrix corresponds to a row in
-#'       `obs_deaths`.
-#'   - 'proportion_draws': Same format as excess_draws, but containing the
-#'        ratio of deaths compared to baseline rather than the difference
-#'
-#' @import data.table
-#' @export
-get_excess_death_draws <- function(death_data, baseline_draws, template_dt){
-  # Subset to out-of-sample location/year/week/ages
-  templ <- copy(template_dt)
-  templ[, row_id := .I ]
-  deaths_sub <- death_data[in_baseline == 0, ]
-  templ <- templ[
-    (idx_loc %in% deaths_sub$idx_loc) &
-    (idx_year %in% deaths_sub$idx_year) &
-    (idx_week %in% deaths_sub$idx_week) &
-    (idx_age %in% deaths_sub$idx_age),
-  ]
-  # Merge on deaths and observed days
-  templ[
-    deaths_sub,
-    on=c('idx_loc','idx_year','idx_week','idx_age'),
-    `:=` (deaths = i.deaths, observed_days = i.observed_days)
-  ]
-  templ[
-    unique(deaths_sub[, .(idx_loc, idx_year, idx_age, pop)]),
-    on = c('idx_loc', 'idx_year'),
-    pop := i.pop
-  ]
-  # Fill missing deaths with zeroes
-  templ[is.na(deaths), `:=` (deaths = 0, observed_days = 7)]
-  # Correct for nonstandard weeks so that 7 days are effectively observed
-  templ[, deaths_corrected := deaths * 7. / observed_days ]
-  # Compare to baseline draws
-  excess_draws <- templ$deaths_corrected - templ$pop * baseline_draws[templ$row_id, ]
-  proportion_draws <- templ$deaths_corrected / (templ$pop * baseline_draws[templ$row_id, ])
-  # Return data.table of observed deaths and matrix of excess
-  return(list(
-    obs_deaths=templ, excess_draws=excess_draws, proportion_draws=proportion_draws
   ))
 }
 
