@@ -36,6 +36,8 @@ prepped_data_files:
   shapefile_sp: 'analysis_shp_sp.RDS'
   adjacency_matrix: 'adjmat.RDS'
 results_files:
+  config: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_model_config.yaml'
+  args: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_model_args.yaml'
   data_stack: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_data_stack.RDS'
   params_list: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_params_list.RDS'
   map_glm_fit: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_map_glm_fit.RDS'
@@ -44,13 +46,11 @@ results_files:
   param_draws: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_param_draws.csv'
   pred_draws: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_pred_draws.csv'
   pred_summary: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_pred_summary.csv'
-  excess_draws: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_excess_draws.csv'
-  proportion_draws: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_proportion_draws.csv'
-  excess_summary: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_excess_summary.csv'
 model_years: [2015, 2016, 2017, 2018, 2019, 2020]
 age_cutoffs: [0, 60, 70, 80, 90]
 model_week_range: [1, 52]
 num_draws: 1000
+random_seed: 96120517 # First result of round(runif(1) * 1E8)
 projection: "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs"
 first_death_date: '2020-02-26' # In YYYY-MM-DD format
 final_obs_date: '2020-08-31' # In YYYY-MM-DD format
