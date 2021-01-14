@@ -208,7 +208,7 @@ error_provmonth <- calculate_rmse_rse(
 coverage_provmonth <- calculate_coverage(
   in_data = data_by_prov_month, num_field = 'deaths', denom_field = 'pop',
   draw_fields = draw_col_names, coverage_levels = c(.5, .8, .9, .95, .99),
-  binom_sim = TRUE
+  pois_sim = TRUE
 )
 # Save to file
 fwrite(error_provmonth, file = glue::glue('{pv_dir}/{fp_prefix}_error_provmonth.csv'))
