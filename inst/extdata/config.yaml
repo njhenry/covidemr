@@ -4,6 +4,7 @@ paths:
   raw_deaths: '/well/moore/users/bsb907/temp_data/ita_emr/raw_data/20201203/deaths/comuni_giornaliero_dati_fino_31agosto.csv'
   raw_covid_deaths: '/well/moore/users/bsb907/temp_data/ita_emr/raw_data/20201203/covid_deaths/Reference_hospitalization_all_locs.csv'
   raw_covars:
+    year_cov: ''
     tfr: '/well/moore/users/bsb907/temp_data/ita_emr/raw_data/20201203/covars/COVAR_tfr_2015_2018_province.csv'
     unemp: '/well/moore/users/bsb907/temp_data/ita_emr/raw_data/20201203/covars/COVAR_unemployment_2015_2019_province.csv'
     socserv: '/well/moore/users/bsb907/temp_data/ita_emr/raw_data/20201203/covars/COVAR_social_services_2015_2017_province.csv'

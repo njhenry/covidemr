@@ -91,6 +91,30 @@ get_covar_prep_function <- function(covar_name){
 }
 
 
+#' Prepare year covariate
+#'
+#' @description Covariate-specific prep function for the year covariate. This
+#'   one is pretty simple - the (unnormalized) covariate is the same as the year
+#'
+#' @param model_years Vector of years to consider for modeling
+#'
+#' @return data.table containing prepared covariate data and vector of indices
+#'
+#' @import data.table
+#' @export
+ita_prepare_covar_year_cov <- function(model_years){
+
+  # The prepped covariate is the same as the year
+  out_list <- list(
+    prepped_covar = data.table(year = model_years, year_cov = model_years),
+    covar_indices = 'year'
+  )
+
+  # Return
+  return(out_list)
+}
+
+
 #' Prepare TFR covariate
 #'
 #' @description Covariate-specific prep function for TFR (total fertility rate).
