@@ -190,3 +190,70 @@ calculate_coverage <- function(
   if(length(group_fields) == 0) coverage_dt[, agg_dummy := NULL ]
   return(coverage_dt)
 }
+
+
+#' Aggregate data and draws
+#'
+#' @description Aggregate the draws (rates) and the data (population and deaths)
+#'   by a set of grouping identifiers
+#'
+#' @param in_data Input data.table, including draws (in rate space), the
+#'   numerator and denominator (in count space), and any grouping fields
+#' @param num_field Field containing the data numerator (e.g. deaths)
+#' @param denom_field Field containing the data denominator (e.g. population)
+#' @param draw_fields Character vector of fields containing predictive draws, in
+#'   rate space (e.g. mortality rates)
+#' @param group_fields [optional, default NULL] Character vector containing all
+#'   fields for grouping observations during the aggregation. If this field is
+#'   empty, all data will be aggregated to a single row and returned with no
+#'   identifiers
+#' @param summarize [bool, default TRUE] should summary columns be added for the
+#'   aggregated draws?
+#'
+#' @import data.table matrixStats
+#' @export
+aggregate_data_and_draws <- function(
+  in_data, num_field, denom_field, draw_fields, group_fields = NULL,
+  summarize = TRUE
+){
+  # Ensure that there are no missing columns
+  missing_cols <- setdiff(
+    c(num_field, denom_field, draw_fields, group_fields), colnames(in_data)
+  )
+  if(length(missing_cols) > 0){
+    stop("Missing fields for aggregation:" , paste(missing_cols, collapse=', '))
+  }
+  to_agg <- data.table::copy(in_data)
+  # If no grouping field is specified, make a dummy grouping field
+  if(length(group_fields) == 0){
+    to_agg[, agg_dummy := 1 ]
+    group_by <- 'agg_dummy'
+  } else {
+    group_by <- group_fields
+  }
+  # Create dummy numerator and denominator columns for ease of aggregation
+  to_agg[, dummy_num := get(num_field) ]
+  to_agg[, dummy_denom := get(denom_field) ]
+  # Run aggregation
+  agg_data <- to_agg[, c(
+      list(dummy_num = sum(dummy_num)),
+      lapply(.SD, function(x) weighted.mean(x, w = dummy_denom))
+    ),
+    .SDcols = draw_fields,
+    by = group_by
+  ]
+  # Clean up
+  if(num_field != 'dummy_num') setnames(agg_data, 'dummy_num', num_field)
+  if(length(group_fields) == 0) agg_data[, agg_dummy := NULL ]
+  # Add summary pred columns
+  if(summarize){
+    agg_data$pred_mean <- rowMeans(agg_data[, ..draw_fields], na.rm=TRUE)
+    agg_data$pred_lower <- matrixStats::rowQuantiles(
+      as.matrix(agg_data[, ..draw_fields]), probs = .025, na.rm = TRUE
+    )
+    agg_data$pred_upper <- matrixStats::rowQuantiles(
+      as.matrix(agg_data[, ..draw_fields]), probs = .975, na.rm = TRUE
+    )
+  }
+  return(agg_data)
+}
