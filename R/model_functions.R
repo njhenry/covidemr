@@ -52,16 +52,18 @@ assign_seasonality_ids <- function(input_data, grouping_fields = NULL){
 #'
 #' @description Find the Maximum a Priori (MAP) estimates for fixed effect
 #'   parameter values, including age-specific fixed effects, in a simplified
-#'   version of a binomial GLM. Starting the full TMB model with fixed effect
-#'   starting values set at the MAP has been shown to improve performance and
-#'   run time.
+#'   version of a GLM. Starting the full TMB model with fixed effect starting
+#'   values set at the MAP has been shown to improve performance and run time.
 #'
 #' @param in_data Input data.table, including only the data used to train the
 #'    model. Fields must include a numerator, a denominator, fields named for
 #'    all covariates, and (optionally) an age ID field
-#' @param numerator_field Field name for the numerator (eg deaths)
-#' @param denominator_field Field name for the denominator (eg population)
+#' @param events_field Field name for the number of events (eg deaths)
+#' @param exposure_field Field name for the relative exposure (eg. pop-time)
 #' @param covar_names Names of all covariates, including 'intercept' if desired
+#' @param distribution_family Name of the distribution to to fit the GLM with,
+#'   which also determines the link function to be used. Should be a valid
+#'   argument to pass to `stats::glm(family = distribution_family)`
 #' @param grouping_field [optional] Field that groups observations by ID
 #'
 #' @return Named list with two items:
@@ -74,11 +76,12 @@ assign_seasonality_ids <- function(input_data, grouping_fields = NULL){
 #'
 #' @import data.table glue stats
 #' @export
-find_binomial_map_parameter_estimates <- function(
-  in_data, numerator_field, denominator_field, covar_names, grouping_field = NULL
+find_glm_map_parameter_estimates <- function(
+  in_data, events_field, exposure_field, covar_names, distribution_family,
+  grouping_field = NULL
 ){
   # Ensure that all columns are available in input data
-  reqd <- c(numerator_field, denominator_field, covar_names, grouping_field)
+  reqd <- c(events_field, exposure_field, covar_names, grouping_field)
   missing_fields <- setdiff(reqd, colnames(in_data))
   if(length(missing_fields) > 0){
     stop("MAP input data missing fields: ", paste(missing_fields, collapse=', '))
@@ -98,18 +101,18 @@ find_binomial_map_parameter_estimates <- function(
     grp_cols <- c()
   }
 
-  # Get a field representing proportion of successes
-  in_data[, prop_success := get(numerator_field) / get(denominator_field) ]
+  # Get a field representing successes as a proportion of exposure
+  in_data[, rate_success := get(events_field) / get(exposure_field) ]
 
   # Set up formula with an offset based on link function, then run the GLM
   formula_char <- glue::glue(
-    "prop_success ~ 0 + {paste(c(covar_names, grp_cols), collapse = ' + ')}"
+    "rate_success ~ 0 + {paste(c(covar_names, grp_cols), collapse = ' + ')}"
   )
   .env <- environment()
   formula_parsed <- as.formula(formula_char, env = .env)
   glm_fit <- stats::glm(
-    formula_parsed, data = in_data, family = 'binomial',
-    weights = in_data[[denominator_field]]
+    formula_parsed, data = in_data, family = distribution_family,
+    weights = in_data[[exposure_field]]
   )
 
   # Return the full GLM fit, the covariate fixed effects, and (optionally) the
