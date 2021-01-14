@@ -14,8 +14,8 @@ config <- yaml::read_yaml(file.path(dev_fp, 'inst/extdata/config.yaml'))
 
 # TODO: convert to CLI
 compare_runs <- c(
-  '20201214f3fal', '20201214f2fal', '20201214f1fal', '20201214f3fl',
-  '20201214f2fl', '20201214f1fl', '20201214nof'
+  '20210113f3fal', '20210113f2fal', '20210113f1fal', '20210113f3fl',
+  '20210113f2fl', '20210113f1fl', '20210113nof'
 )
 is_oos <- 'oos'
 
