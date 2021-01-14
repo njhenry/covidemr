@@ -63,7 +63,7 @@ calculate_rmse_rse <- function(
   if(all(oos_cols %in% colnames(dt_for_error)) & (length(compare_years) > 0)){
     oos_grps <- setdiff(oos_cols, 'year')
     oos_compare_dt <- rbindlist(lapply(compare_years, function(oosyr){
-      oosdt <- copy(dt_forf_error[
+      oosdt <- copy(dt_for_error[
         year != oosyr,
         bl_oos := sum(get(num_field))/sum(get(denom_field)),
         by = oos_grps
