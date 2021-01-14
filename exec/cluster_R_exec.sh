@@ -1,6 +1,6 @@
 #!/bin/bash
 #$ -q short.qc
-#$ -pe shmem 10
+#$ -pe shmem 5
 #$ -e /users/moore/bsb907/logging/
 #$ -o /users/moore/bsb907/logging/
 #$ -m n
