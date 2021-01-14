@@ -94,13 +94,13 @@ map_ita_choropleth <- function(
     fig <- fig + guides(fill = guide_legend(
         label.position="left", label.hjust=1, reverse=TRUE, title.hjust = .5
     )) + theme(
-      legend.position = c(.98, .98),
+      legend.position = c(.99, .99),
       legend.justification = c(1, 1),
       legend.background = element_rect(fill='white', color=line_color, size=.5),
-      legend.title = element_text(size = 15, hjust = .5),
-      legend.text = element_text(size = 11),
+      legend.title = element_text(size = 12, hjust = .5),
+      legend.text = element_text(size = 10),
       legend.key.width = unit(.55, 'inches'),
-      legend.key.height = unit(.3, 'inches'),
+      legend.key.height = unit(.25, 'inches'),
       legend.margin = margin(12, 12, 12, 12)
     )
   } else {
