@@ -63,7 +63,7 @@ calculate_rmse_rse <- function(
   if(all(oos_cols %in% colnames(dt_for_error)) & (length(compare_years) > 0)){
     oos_grps <- setdiff(oos_cols, 'year')
     oos_compare_dt <- rbindlist(lapply(compare_years, function(oosyr){
-      oosdt <- copy(dt_for_error[
+      oosdt <- copy(dt_forf_error[
         year != oosyr,
         bl_oos := sum(get(num_field))/sum(get(denom_field)),
         by = oos_grps
@@ -114,9 +114,9 @@ calculate_rmse_rse <- function(
 #'   metrics should be grouped, list the fields to group them by here. If NULL
 #'   (the default), the predictive validity metrics will be calculated across
 #'   the entire dataset
-#' @param binom_sim [optional, default TRUE] Should the coverage be estimated
-#'   using draws from a predictive binomial distribution (as opposed to a simple
-#'   estimator of population * p)?
+#' @param pois_sim [optional, default TRUE] Should the coverage be estimated
+#'   using realizations Poisson distribution centered at population * rate (as
+#'   opposed to the central value, population * p)?
 #'
 #' @return Data.table containing the following fields:
 #'   - 'covg<X>': Empirical coverage for the X% uncertainty interval
@@ -126,7 +126,7 @@ calculate_rmse_rse <- function(
 #' @export
 calculate_coverage <- function(
   in_data, num_field, denom_field, draw_fields, coverage_levels = c(.5, .8, .95),
-  group_fields = NULL, binom_sim = TRUE
+  group_fields = NULL, pois_sim = TRUE
 ){
   dt_for_covg <- data.table::copy(in_data)
   # Ensure that there are no missing columns
@@ -144,16 +144,19 @@ calculate_coverage <- function(
     group_by <- group_fields
   }
 
-  ## RUN DIFFERENT COVERAGE TESTS DEPENDING ON BINOM_SIM
-  if(binom_sim){
-    ## CASE: Using binomial simulation
+  ## RUN DIFFERENT COVERAGE TESTS DEPENDING ON POIS_SIM
+  if(pois_sim){
+    ## CASE: Using Poisson simulation
     dt_for_covg[, obsfld := get(num_field) ]
     # Get all draws and denominators matrices with the same dimensions
     ndraws <- length(draw_fields)
     draws_mat <- as.matrix(dt_for_covg[, ..draw_fields])
     denoms_mat <- as.matrix(rep(dt_for_covg[[denom_field]], ndraws), ncol=ndraws)
-    binom_samples <- matrix(rbinom(draws_mat, denoms_mat, draws_mat), ncol=ndraws)
-    dt_for_covg[, draw_fields] <- as.data.table(binom_samples)
+    pois_samples <- matrix(
+      rpois(length(draws_mat), denoms_mat * draws_mat),
+      ncol=ndraws
+    )
+    dt_for_covg[, draw_fields] <- as.data.table(pois_samples)
   } else {
     ## CASE: Using probabilities directly
     # Get coverage by observation at all requested UI levels
