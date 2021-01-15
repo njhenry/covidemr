@@ -9,6 +9,7 @@
 # library(covidemr)
 library(argparse)
 library(data.table)
+library(gridExtra)
 library(RColorBrewer)
 library(sp)
 library(sf)
@@ -186,6 +187,18 @@ summ_by_prov_week_dt <- aggregate_summarize_excess(
 summ_by_week_dt <- aggregate_summarize_excess(
   baseline_deaths_dt, aggregate=TRUE, group_cols=c('week')
 )[wk_starts, date := i.date, on = 'week']
+# Update so that the final (incompletely-observed week) trend of expected and
+#  observed deaths is correct
+final_week_obs_days <- as.integer(as.Date('2020-08-31') - max(wk_starts$date)) + 1
+count_cols <- c(
+  'deaths', 'bl_mean', 'bl_lower', 'bl_upper', 'ex_d_mean', 'ex_d_lower',
+  'ex_d_upper'
+)
+for(ccol in count_cols){
+  suppressWarnings(
+    summ_by_week_dt[week == max(week), (ccol) := get(ccol)*7/final_week_obs_days ]
+  )
+}
 
 # Grouped by province, across the duration of the "focal period" (March to May)
 summ_by_prov_focus_dt <- aggregate_summarize_excess(
@@ -217,7 +230,7 @@ summ_by_age_week_focus <- aggregate_summarize_excess(
   ][ ex_d_mean < 0, ex_d_mean := 0
   ][, ex_d_plot := cumsum(ex_d_mean), by = week
   ][wk_starts, date := i.date, on = 'week'
-  ][ order(-age_group_code, week) ]
+  ][ order(age_group_code, week) ]
 
 
 tictoc::toc()
@@ -266,6 +279,12 @@ date_labs <- strftime(date_breaks, '%b %d')
 y_breaks <- seq(0, 2.5E4, by=5E3)
 y_labs <- c('0', '5,000', '10,000', '15,000', '20,000', '25,000')
 
+focus_date_lims <- as.Date(c('2020-02-26', '2020-05-28'))
+focus_date_breaks <- as.Date(c(
+  '2020-02-26', '2020-03-01', '2020-04-01', '2020-05-01', '2020-05-27'
+))
+focus_date_labs <- c('', 'Mar 01', 'Apr 01', 'May 01', 'May 27')
+
 natl_weekly_plot <- ggplot(data=summ_by_week_dt, aes(x=date)) +
   geom_ribbon(
     aes(ymin=bl_lower, ymax=bl_upper),
@@ -313,9 +332,9 @@ excess_natl_plot <- ggplot(data=natl_covid_and_excess, aes(x=date)) +
   geom_line(aes(y=covid_deaths, color='COVID-19'), lwd = .75) +
   geom_line(aes(y=ex_d_mean, color='Excess (all-cause)'), lwd = .75) +
   scale_x_date(
-    limits = range(natl_covid_and_excess$date),
-    breaks = date_breaks,
-    labels = date_labs
+    limits = focus_date_lims,
+    breaks = focus_date_breaks,
+    labels = focus_date_labs
   ) +
   scale_y_continuous(
     limits = range(
@@ -325,12 +344,23 @@ excess_natl_plot <- ggplot(data=natl_covid_and_excess, aes(x=date)) +
   ) +
   scale_color_manual(values=mort_plot_colors, breaks=names(mort_plot_colors)) +
   labs(
-    x='Week starting', y='Deaths',
-    title='Italy: excess mortality and COVID-19 deaths',
-    subtitle = 'March through May 2020',
-    color='') +
+    x='Date', y='Deaths',
+    title='COVID-19 deaths and excess mortality',
+    subtitle = 'Italy, March through May 2020',
+    color = ''
+  ) +
   theme_light() +
-  theme(axis.text.x = element_text(angle=45, hjust=1), legend.position='bottom')
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    legend.position = c(.94, .98),
+    legend.justification = c(1, 1),
+    legend.background = element_rect(fill='white', color='#CCCCCC', size=.25),
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    legend.key.width = unit(.55, 'inches'),
+    legend.key.height = unit(.25, 'inches'),
+    legend.margin = margin(2.5, 4, 4, 4)
+  )
 png(
   file.path(viz_dir, 'national_excess_march_to_may.png'),
   height=5, width=8, units='in', res=200
@@ -411,7 +441,8 @@ weekly_by_province_data <- merge(
   summ_by_prov_week_dt[, .(location_code, week, ex_d_mean)],
   top_prov_dt[, .(location_code, top_grouping)],
   by = 'location_code'
-)
+)[, .(ex_d_mean = sum(ex_d_mean)), by = .(week, top_grouping) ]
+weekly_by_province_data[ ex_d_mean < 0, ex_d_mean := 0 ]
 weekly_by_province_data <- merge(
   x = weekly_by_province_data,
   y = data.table(top_grouping = as.character(prov_grps), grp_order = 1:4),
@@ -424,24 +455,38 @@ weekly_by_province_data <- merge(
 
 
 excess_by_prov_grp_plot <- ggplot(data = weekly_by_province_data, aes(x=date)) +
-  geom_hline(yintercept = 0, color='black', lwd=.5) +
+  geom_hline(yintercept = 0, color='black', lwd=.25, alpha=.5) +
   geom_ribbon(aes(fill=top_grouping, ymax=ex_to_plot), ymin=0, color=NA) +
-  scale_x_date(limits = range(natl_covid_and_excess$date), breaks=date_breaks, labels=date_labs) +
+  scale_x_date(
+    limits = focus_date_lims,
+    breaks = focus_date_breaks,
+    labels = focus_date_labs
+  ) +
   scale_y_continuous(
-    limits = c(
-      min(natl_covid_and_excess$ex_d_lower), max(natl_covid_and_excess$ex_d_upper)
+    limits = range(
+      c(natl_covid_and_excess$ex_d_lower, natl_covid_and_excess$ex_d_upper)
     ),
     breaks = y_breaks, labels = y_labs
   ) +
   scale_fill_manual(values=prov_colors, breaks=names(prov_colors)) +
   labs(
-    x='Week starting', y='Deaths',
-    title='Italy: excess mortality by province grouping',
-    subtitle = 'March through May 2020',
+    x='Date', y='Deaths',
+    title='Excess deaths by province grouping',
+    subtitle = 'Italy, March through May 2020',
     fill = ''
   ) +
   theme_light() +
-  theme(axis.text.x = element_text(angle=45, hjust=1), legend.position='bottom')
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    legend.position = c(.94, .98),
+    legend.justification = c(1, 1),
+    legend.background = element_rect(fill='white', color='#CCCCCC', size=.25),
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    legend.key.width = unit(.55, 'inches'),
+    legend.key.height = unit(.25, 'inches'),
+    legend.margin = margin(2.5, 4, 4, 4)
+  )
 png(
   file.path(viz_dir, 'province_top_burden_lines.png'),
   height=5, width=8, units='in', res=200
@@ -467,39 +512,120 @@ for(this_ag in unique(summ_by_prov_age_focus$age_group_name)){
   )
 }
 
-age_plot_colors <- RColorBrewer::brewer.pal('Spectral', n=nrow(age_groups_dt))
+age_plot_colors <- RColorBrewer::brewer.pal('YlGn', n=nrow(age_groups_dt) + 1)[-1]
 names(age_plot_colors) <- age_groups_dt$age_group_name
+
+age_groups_dt$age_group_name_plot <- factor(
+  age_groups_dt$age_group_name, levels = rev(age_groups_dt$age_group_name)
+)
+summ_by_age_week_focus[
+  age_groups_dt, age_group_name_plot := i.age_group_name_plot, on='age_group_name'
+]
 
 ## Aggregate by age group and week, then create line plot
 excess_age_week_plot <- ggplot(data=summ_by_age_week_focus, aes(x=date)) +
-  geom_hline(yintercept = 0, color='black', lwd=.5) +
+  geom_hline(yintercept = 0, color='black', lwd=.25, alpha=.5) +
   geom_ribbon(
-    aes(fill = age_group_name, ymax = ex_d_plot), ymin = 0, color = NA
+    aes(fill = age_group_name_plot, ymax = ex_d_plot), ymin = 0, color = NA
   ) +
   scale_x_date(
-    limits = range(summ_by_age_week_focus$date),
-    breaks = date_breaks,
-    labels = date_labs
+    limits = focus_date_lims,
+    breaks = focus_date_breaks,
+    labels = focus_date_labs
   ) +
   scale_y_continuous(
-    limits = c(0, max(10100, summ_by_age_week_focus$ex_d_plot)),
-    breaks = c(0, 5E3, 1E4), labels = c('0', '5,000', '10,000')
+    limits = range(
+      c(natl_covid_and_excess$ex_d_lower, natl_covid_and_excess$ex_d_upper)
+    ),
+    breaks = y_breaks, labels = y_labs
   ) +
   scale_fill_manual(
     values=age_plot_colors, breaks=names(age_plot_colors)
   ) +
   labs(
-    x='Week starting', y='Deaths',
-    title='Italy: excess mortality by age group',
-    subtitle = 'March through May 2020',
+    x='Date', y='Deaths',
+    title='Excess deaths by age group',
+    subtitle = 'Italy, March through May 2020',
     fill='') +
   theme_light() +
-  theme(axis.text.x = element_text(angle=45, hjust=1), legend.position='bottom')
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    legend.position = c(.94, .98),
+    legend.justification = c(1, 1),
+    legend.background = element_rect(fill='white', color='#CCCCCC', size=.25),
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    legend.key.width = unit(.55, 'inches'),
+    legend.key.height = unit(.25, 'inches'),
+    legend.margin = margin(2.5, 4, 4, 4)
+  )
 png(
   file.path(viz_dir, 'ag_excess_lines_plot.png'),
   height=6, width=10, units='in', res=300
 )
 plot(excess_age_week_plot)
+dev.off()
+
+
+# Add plot that includes the population distribution and 2019 death distribution
+#  by age group
+
+ag_dummy <- CJ(age_group_code = sort(unique(pop_dt$age_group_code)), dummy=1:2)
+
+pop_distrib_dt <- pop_dt[ year==2020, .(pop=sum(pop)), by = age_group_code
+  ][ order(age_group_code)
+  ][, rel_pop := pop / sum(pop)
+  ][, to_plot := cumsum(rel_pop)
+  ][ age_groups_dt, age_group_name_plot:=i.age_group_name_plot, on='age_group_code']
+fwrite(pop_distrib_dt, file=file.path(viz_dir, 'pop_dist_jan_2020.csv'))
+pop_distrib_dt <- merge(pop_distrib_dt, ag_dummy, by = 'age_group_code')
+
+d_distrib_dt <- data_full[year < 2020, .(deaths=sum(deaths)), by=age_group_code
+  ][ order(age_group_code)
+  ][, rel_deaths := deaths / sum(deaths)
+  ][, to_plot := cumsum(rel_deaths)
+  ][ age_groups_dt, age_group_name_plot:=i.age_group_name_plot, on='age_group_code']
+fwrite(d_distrib_dt, file=file.path(viz_dir, 'deaths_dist_2015_to_2019.csv'))
+d_distrib_dt <- merge(d_distrib_dt, ag_dummy, by = 'age_group_code')
+
+# Helper function to make similar plots for death and population distributions
+make_distrib_fig <- function(dt, title){
+  out_fig <- ggplot(data=dt, aes(x = dummy)) +
+    geom_ribbon(ymin=0, aes(ymax = to_plot, fill=age_group_name_plot)) +
+    scale_x_continuous(limits=c(1,2), breaks=c(1,2), labels=c('May 27','')) +
+    scale_y_continuous(
+      limits = c(-0.23,1.15), breaks = c(0, .25, .5, .75, 1.),
+      labels = c('0%', '25%', '50%', '75%', '100%')
+    ) +
+    scale_fill_manual(
+      values=age_plot_colors, breaks=names(age_plot_colors)
+    ) +
+    labs(title=title, x="", y="", color="") +
+    theme_light() +
+    theme(
+      legend.position='none',
+      axis.text.x = element_text(colour='white', angle=45, hjust=1),
+      axis.text.y = element_text(size=8),
+      plot.title = element_text(size=8, hjust=0.5),
+      plot.margin = unit(c(0.2,0.5,0.2,0), 'cm'),
+      axis.ticks.x = element_blank()
+    )
+  return(out_fig)
+}
+
+pop_distrib_fig <- make_distrib_fig(pop_distrib_dt, '\n\nPopulation\nJan 2020')
+d_distrib_fig <- make_distrib_fig(d_distrib_dt, '\n\nDeaths\n2015-19')
+
+## Plot it
+png(
+  file.path(viz_dir, 'ag_excess_lines_plot_with_refs.png'),
+  height=6, width=12, units='in', res=300
+)
+gridExtra::grid.arrange(
+  excess_age_week_plot, pop_distrib_fig, d_distrib_fig,
+  layout_matrix = matrix(c(rep(1,8), 2, 3), nrow=1),
+  padding = unit(0, 'line')
+)
 dev.off()
 
 
@@ -568,10 +694,14 @@ for(loc_code in unique(location_table$location_code)){
       color = NA, fill = mort_plot_colors['Excess (all-cause)'], alpha = .5
     ) +
     geom_line(aes(y=ex_d_mean, color='Excess (all-cause)'), lwd = .75) +
-    scale_x_date(limits = range(to_plot_dt$date), breaks=date_breaks, labels=date_labs) +
+    scale_x_date(
+      limits = focus_date_lims,
+      breaks = focus_date_breaks,
+      labels = focus_date_labs
+    ) +
     scale_color_manual(values=mort_plot_colors, breaks=names(mort_plot_colors), guide=FALSE) +
     labs(
-      x='Week starting', y='Deaths',
+      x='Date', y='Deaths',
       title=plot_title,
       color='') +
     theme_light() +
@@ -630,7 +760,7 @@ covidemr::map_ita_choropleth(
   in_data = peak_excess_dt[region_code %in% 1:9, ],
   map_field = 'fill_grp',
   fill_list = list(
-    values = fill_colors, limits = rev(fill_grps)
+    values = fill_colors_highlight, limits = rev(fill_grps_highlight)
   ),
   titles_list = list(
     title = 'Peak excess mortality over baseline',
