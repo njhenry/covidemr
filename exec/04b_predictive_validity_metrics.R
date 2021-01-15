@@ -125,6 +125,10 @@ pred_data_full <- na.omit(
 )
 rm(list = c('template_dt','num_denom_data','templ_sub','draws_mat','draws_list'))
 
+plot_years <- sort(unique(template_dt$year))
+plot_colors <- RColorBrewer::brewer.pal(name = "Set2", n=length(plot_years))
+names(plot_colors) <- as.character(plot_years)
+
 
 ## Generate predictive validity metrics: Most detailed input data --------------
 
@@ -156,7 +160,7 @@ names(age_cols) <- age_groups
 obs_scatter_all <- ggplot(data=pred_data_full) +
   geom_point(
     aes(x=obs_plot, y=pred_mean_plot, size=sqrt(pop)),
-    alpha = .25
+    alpha = .2
   ) +
   facet_wrap('age_group_name', ncol=ceiling(sqrt(uniqueN(pred_data_full$age_group_name)))) +
   geom_abline(intercept = 0, slope = 1, linetype = 2, color = '#AAAAAA') +
@@ -167,7 +171,7 @@ obs_scatter_all <- ggplot(data=pred_data_full) +
     breaks = c(5E3, 1E4, 5E4, 1E5), labels = c('5k', '10k', '50k', '100k')
   ) +
   labs(
-    title = paste0('Weekly mortality rate among ',run_sex,'s: observed vs. mean predicted'),
+    title = paste0('Weekly mortality rate among ',run_sex,'s'),
     subtitle = 'Reported as deaths per 100,000 person-weeks',
     x = 'Observed', y = 'Predicted (mean)', color = 'Age Group',
     size = 'Population\nsize'
@@ -216,15 +220,12 @@ fwrite(coverage_provmonth, file = glue::glue('{pv_dir}/{fp_prefix}_coverage_prov
 
 
 data_by_prov_month[, `:=` (obs_plot = obs * 1E5, pred_mean_plot = pred_mean * 1E5)]
-plot_years <- sort(unique(data_by_prov_month$year))
-plot_colors <- RColorBrewer::brewer.pal(name = "Set2", n=length(plot_years))
-names(plot_colors) <- as.character(plot_years)
 xybreaks <- seq(10, 50, by=10)
 
 obs_scatter_prov_month <- ggplot(data=data_by_prov_month[year < 2020 | wkgrp < 3,]) +
   geom_point(
     aes(x=obs_plot, y=pred_mean_plot, size=sqrt(pop), color=as.character(year)),
-    alpha = .25
+    alpha = .2
   ) +
   geom_abline(intercept = 0, slope = 1, linetype = 2, color = '#AAAAAA') +
   scale_color_manual(values=plot_colors) +
@@ -232,9 +233,9 @@ obs_scatter_prov_month <- ggplot(data=data_by_prov_month[year < 2020 | wkgrp < 3
   scale_y_continuous(limits = range(xybreaks), breaks = xybreaks, labels = xybreaks, trans='sqrt') +
   scale_size_continuous(guide = 'none') +
   labs(
-    title = paste0('Aggregated mortality rate among ',run_sex,'s, by month and province'),
-    subtitle = 'Reported as deaths per 100,000 person-weeks',
-    x = 'Observed', y = 'Predicted (mean)', color = 'Age Group',
+    title = paste0('Mortality rate among ',run_sex,'s'),
+    subtitle = 'Aggregated by month and province',
+    x = 'Observed', y = 'Predicted (mean)', color = 'Year',
     size = 'Population\nsize'
   ) +
   theme_dark()
