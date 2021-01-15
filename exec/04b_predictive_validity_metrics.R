@@ -123,12 +123,13 @@ for(ii in 1:length(holdouts)){
 pred_data_full <- na.omit(
   data.table::rbindlist(draws_list), cols=c('deaths','pop',draw_col_names)
 )
-rm(list = c('template_dt','num_denom_data','templ_sub','draws_mat','draws_list'))
 
+# Year colors for future plots
 plot_years <- sort(unique(template_dt$year))
 plot_colors <- RColorBrewer::brewer.pal(name = "Set2", n=length(plot_years))
 names(plot_colors) <- as.character(plot_years)
 
+rm(list = c('template_dt','num_denom_data','templ_sub','draws_mat','draws_list'))
 
 ## Generate predictive validity metrics: Most detailed input data --------------
 
