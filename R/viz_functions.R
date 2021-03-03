@@ -90,8 +90,8 @@ map_ita_choropleth <- function(
   if(!is.null(labels_dt)){
     fig <- fig +
       geom_text(
-        data = labels_dt,
-        aes(x=x, y=y, label=label_name), hjust='middle', vjust='center', size=3
+        data = labels_dt, aes(x=x, y=y, label=label_name),
+        hjust='middle', vjust='center', size=3, lineheight=.75
       ) +
       geom_segment(
         data = labels_dt, aes(x=x1_lseg, y=y1_lseg, xend=x2_lseg, yend=y2_lseg)
@@ -205,8 +205,8 @@ map_ita_choropleth_region <- function(
   if(!is.null(labels_dt)){
     fig <- fig +
       geom_text(
-        data = labels_dt,
-        aes(x=x, y=y, label=label_name), hjust='middle', vjust='center', size=3
+        data = labels_dt, aes(x=x, y=y, label=label_name),
+        hjust='middle', vjust='center', size=3, lineheight=.75
       ) +
       geom_segment(
         data = labels_dt, aes(x=x1_lseg, y=y1_lseg, xend=x2_lseg, yend=y2_lseg)
