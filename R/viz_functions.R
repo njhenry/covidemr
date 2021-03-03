@@ -36,6 +36,9 @@ italian_cities_dt <- function(){
 #' @param fill_type [optional, default 'continuous'] Scale fill type eg.
 #'   'discrete' or 'continuous'
 #' @param show_legend Should the legend be featured on the plot?
+#' @param labels_dt [optional] Data.table used to label locations on the graph. Should be
+#'   a data.table containing at least the fields `label_name`, `x`, `y`, `x1_lseg`,
+#'   `x2_lseg`, `y1_lseg`, `y2_lseg`
 #' @param save_fp [optional, default NULL] if not NULL (the default), saves to
 #'   file rather than returning an object. If filled, should be a PNG extension
 #' @param file_height [optional, default 8] map height in inches
@@ -48,7 +51,7 @@ italian_cities_dt <- function(){
 #' @export
 map_ita_choropleth <- function(
   province_sf, region_sf, in_data, map_field, fill_list, fill_lims = NULL,
-  titles_list = list(), fill_type = 'continuous', show_legend = TRUE,
+  titles_list = list(), fill_type = 'continuous', show_legend = TRUE, labels_dt = NULL,
   save_fp = NULL, file_height = 7.25, file_width = 6
 ){
   loc_codes <- unique(province_sf$location_code)
@@ -84,6 +87,16 @@ map_ita_choropleth <- function(
       axis.text.x = element_blank(),
       axis.text.y = element_blank()
     )
+  if(!is.null(labels_dt)){
+    fig <- fig +
+      geom_text(
+        data = labels_dt,
+        aes(x=x, y=y, label=label_name), hjust='middle', vjust='center', size=3
+      ) +
+      geom_segment(
+        data = labels_dt, aes(x=x1_lseg, y=y1_lseg, xend=x2_lseg, yend=y2_lseg)
+      )
+  }
   if(show_legend & (fill_type == 'manual') & !is.null(fill_list$values)){
     if(!is.null(names(fill_list$values))){
       dummy_dt <- data.table(fill_vals = names(fill_list$values))
@@ -139,6 +152,9 @@ map_ita_choropleth <- function(
 #' @param fill_type [optional, default 'continuous'] Scale fill type eg.
 #'   'discrete' or 'continuous'
 #' @param show_legend Should the legend be featured on the plot?
+#' @param labels_dt [optional] Data.table used to label locations on the graph. Should be
+#'   a data.table containing at least the fields `label_name`, `x`, `y`, `x1_lseg`,
+#'   `x2_lseg`, `y1_lseg`, `y2_lseg`
 #' @param save_fp [optional, default NULL] if not NULL (the default), saves to
 #'   file rather than returning an object. If filled, should be a PNG extension
 #' @param file_height [optional, default 8] map height in inches
@@ -151,7 +167,7 @@ map_ita_choropleth <- function(
 #' @export
 map_ita_choropleth_region <- function(
   region_sf, in_data, map_field, fill_list, fill_lims = NULL,
-  titles_list = list(), fill_type = 'continuous', show_legend = TRUE,
+  titles_list = list(), fill_type = 'continuous', show_legend = TRUE, labels_dt = NULL,
   save_fp = NULL, file_height = 7.25, file_width = 6
 ){
   loc_codes <- unique(region_sf$region)
@@ -186,6 +202,16 @@ map_ita_choropleth_region <- function(
       axis.text.x = element_blank(),
       axis.text.y = element_blank()
     )
+  if(!is.null(labels_dt)){
+    fig <- fig +
+      geom_text(
+        data = labels_dt,
+        aes(x=x, y=y, label=label_name), hjust='middle', vjust='center', size=3
+      ) +
+      geom_segment(
+        data = labels_dt, aes(x=x1_lseg, y=y1_lseg, xend=x2_lseg, yend=y2_lseg)
+      )
+  }
   if(show_legend & (fill_type == 'manual') & !is.null(fill_list$values)){
     if(!is.null(names(fill_list$values))){
       dummy_dt <- data.table(fill_vals = names(fill_list$values))
