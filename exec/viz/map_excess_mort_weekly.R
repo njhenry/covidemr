@@ -42,6 +42,10 @@ data_full <- fread(get_prep_fp('full_data'))
 pop_dt <- fread(get_prep_fp('population'))
 polys_sf <- readRDS(get_prep_fp('shapefile_sf'))
 covid_mort <- fread(get_prep_fp('covid_deaths'))
+top_prov_labs <- fread(get_prep_fp('province_labels'))
+top_reg_labs <- fread(get_prep_fp('region_labels'))
+top_reg_labs[, label_name := gsub('\\\\n','\n', label_name)]
+
 
 # Merge extra location identifiers onto the spatial polygons
 merge_on_cols <- c('location_code', 'location_name', 'region_code', 'region_name')
@@ -143,11 +147,15 @@ tictoc::toc()
 ## Define fill colors and breaks -----------------------------------------------
 
 # Breaks used for most choropleths
+# fill_grps <- c(
+#   'Signif. lower', 'Not signif.', '+ 0% to 20%', '+ 20 to 50%', '+ 50% to 100%',
+#   '+ 100 to 200%', '+ >200%'
+# )
+# fill_colors <- c('#b3ffec','#b3b3b3','#FFFFB2','#FECC5C','#FD8D3C','#F03B20','#BD0026')
 fill_grps <- c(
-  'Signif. lower', 'Not signif.', '+ 0% to 20%', '+ 20 to 50%', '+ 50% to 100%',
-  '+ 100 to 200%', '+ >200%'
+  'Not signif.\nhigher', '+ 0% to 20%', '+ 20 to 50%', '+ 50% to 100%', '+ 100 to 200%', '+ >200%'
 )
-fill_colors <- c('#b3ffec','#b3b3b3','#FFFFB2','#FECC5C','#FD8D3C','#F03B20','#BD0026')
+fill_colors <- c('#b3b3b3','#FFFFB2','#FECC5C','#FD8D3C','#F03B20','#BD0026')
 names(fill_colors) <- fill_grps
 
 # Breaks used when highlighting northern provinces
@@ -214,13 +222,12 @@ summ_by_prov_focus_dt <- aggregate_summarize_excess(
 summ_by_prov_age_focus <- aggregate_summarize_excess(
   baseline_deaths_dt[ week %in% (start_week:focus_end_week), ],
   aggregate = TRUE, group_cols = c('location_code', 'age_group_code', 'age_group_name')
-)[, fill_grp := fill_grps[2]
-  ][ sig_under1==1, fill_grp:=fill_grps[1]
-  ][ (sig_over1==1) & (smr_mean<1.2), fill_grp:=fill_grps[3]
-  ][ (sig_over1==1) & (smr_mean>=1.2) & (smr_mean<1.5), fill_grp:=fill_grps[4]
-  ][ (sig_over1==1) & (smr_mean>=1.5) & (smr_mean<2.0), fill_grp:=fill_grps[5]
-  ][ (sig_over1==1) & (smr_mean>=2.0) & (smr_mean<3.0), fill_grp:=fill_grps[6]
-  ][ (sig_over1==1) & (smr_mean>=3.0), fill_grp:=fill_grps[7] ]
+)[, fill_grp := fill_grps[1]
+  ][ (sig_over1==1) & (smr_mean<1.2), fill_grp:=fill_grps[2]
+  ][ (sig_over1==1) & (smr_mean>=1.2) & (smr_mean<1.5), fill_grp:=fill_grps[3]
+  ][ (sig_over1==1) & (smr_mean>=1.5) & (smr_mean<2.0), fill_grp:=fill_grps[4]
+  ][ (sig_over1==1) & (smr_mean>=2.0) & (smr_mean<3.0), fill_grp:=fill_grps[5]
+  ][ (sig_over1==1) & (smr_mean>=3.0), fill_grp:=fill_grps[6] ]
 
 # Grouped by age group and week across the focal period
 summ_by_age_week_focus <- aggregate_summarize_excess(
@@ -243,13 +250,12 @@ for(week_id in start_week:end_week){
   plot_title <- paste("Week of", wk_starts[week == week_id, date_plot ])
   plot_dt <- data.table::copy(summ_by_prov_week_dt[week == week_id, ])
   # Assign fill colors
-  plot_dt[, fill_grp := fill_grps[2] ]
-  plot_dt[sig_under1==1, fill_grp:=fill_grps[1] ]
-  plot_dt[(sig_over1==1) & (smr_mean<1.2), fill_grp:=fill_grps[3] ]
-  plot_dt[(sig_over1==1) & (smr_mean>=1.2) & (smr_mean<1.5), fill_grp:=fill_grps[4] ]
-  plot_dt[(sig_over1==1) & (smr_mean>=1.5) & (smr_mean<2.0), fill_grp:=fill_grps[5] ]
-  plot_dt[(sig_over1==1) & (smr_mean>=2.0) & (smr_mean<3.0), fill_grp:=fill_grps[6] ]
-  plot_dt[(sig_over1==1) & (smr_mean>=3.0), fill_grp:=fill_grps[7] ]
+  plot_dt[, fill_grp := fill_grps[1] ]
+  plot_dt[(sig_over1==1) & (smr_mean<1.2), fill_grp:=fill_grps[2] ]
+  plot_dt[(sig_over1==1) & (smr_mean>=1.2) & (smr_mean<1.5), fill_grp:=fill_grps[3] ]
+  plot_dt[(sig_over1==1) & (smr_mean>=1.5) & (smr_mean<2.0), fill_grp:=fill_grps[4] ]
+  plot_dt[(sig_over1==1) & (smr_mean>=2.0) & (smr_mean<3.0), fill_grp:=fill_grps[5] ]
+  plot_dt[(sig_over1==1) & (smr_mean>=3.0), fill_grp:=fill_grps[6] ]
   # Plot it
   covidemr::map_ita_choropleth(
     province_sf = polys_sf, region_sf = regions_sf,
@@ -258,7 +264,7 @@ for(week_id in start_week:end_week){
     fill_list = list(
       values = fill_colors, limits = rev(fill_grps)
     ),
-    titles_list = list(title = plot_title, fill = 'Relative change\nfrom baseline'),
+    titles_list = list(title=plot_title, fill='Relative change\nfrom baseline', x='', y=''),
     fill_type = 'manual',
     save_fp = sprintf("%s/map_excess_rate_week%02d.png", viz_dir, week_id)
   )
@@ -430,8 +436,9 @@ covidemr::map_ita_choropleth(
   fill_list = list(
     values = prov_colors, limits = rev(prov_grps)
   ),
-  titles_list = list(title = '', fill = 'Ranking by\nExcess Deaths'),
+  titles_list = list(title = '', fill = 'Ranking by\nExcess Deaths', x='', y=''),
   fill_type = 'manual',
+  labels_dt = top_prov_labs,
   save_fp = file.path(viz_dir, "province_top_burden_map.png")
 )
 
@@ -666,7 +673,8 @@ covidemr::map_ita_choropleth_region(
   fill_type = 'gradientn',
   titles_list = list(
     title = 'Italy: COVID mortality by region prior to 31 August',
-    fill = 'Deaths\nper 100,000\npopulation'),
+    fill = 'Deaths\nper 100,000\npopulation', x='', y=''),
+  labels_dt = top_reg_labs,
   save_fp = file.path(viz_dir, 'COVID_deaths_per_100k.png')
 )
 
@@ -741,7 +749,7 @@ covidemr::map_ita_choropleth(
   titles_list = list(
     title = 'Week of peak excess mortality',
     subtitle = 'March through May 2020',
-    fill = 'Week beginning'),
+    fill = 'Week beginning', x='', y=''),
   fill_type = 'manual',
   save_fp = file.path(viz_dir, 'peak_excess_week_map.png')
 )
@@ -765,7 +773,7 @@ covidemr::map_ita_choropleth(
   titles_list = list(
     title = 'Peak excess mortality over baseline',
     subtitle = 'March through May 2020',
-    fill = 'Excess Mortality'),
+    fill = 'Excess Mortality', x='', y=''),
   fill_type = 'manual',
   save_fp = file.path(viz_dir, 'peak_excess_amount_map.png')
 )
