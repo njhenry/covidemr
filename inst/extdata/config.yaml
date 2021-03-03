@@ -34,6 +34,8 @@ prepped_data_files:
   template: 'model_template.csv'
   shapefile_sf: 'analysis_shp_sf.RDS'
   shapefile_sp: 'analysis_shp_sp.RDS'
+  region_labels: 'region_labels.csv'
+  province_labels: 'province_labels.csv'
   adjacency_matrix: 'adjmat.RDS'
 results_files:
   config: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_model_config.yaml'
