@@ -7,9 +7,9 @@
 // Purpose: TMB objective function for Italy all-cause mortality model with
 //   space, time (year/week), and age random effects
 //
-// MODEL FORMULATION (load into a TeX interpreter)
+// MODEL FORMULATION
 //
-// D_i \sim Binomial(N_i, p_i)
+// D_i \sim Poisson(N_i * p_i)
 //
 // logit(p_i) = \sum_{k=1}^{4}\alpha_i * \mathbb{I}[age_i = k] + \vec{\beta} X +
 //   Z_{prov_i, year_i, age_i} + f_{prov_i, age_i}(week_i) + \epsilon_i
@@ -92,7 +92,6 @@ Type objective_function<Type>::operator() () {
     DATA_SPARSE_MATRIX(loc_adj_mat);
 
     // Which of the correlated random effects structures should be used?
-    DATA_INTEGER(use_Z_stwa);
     DATA_INTEGER(use_Z_sta);
     DATA_INTEGER(use_Z_fourier);
     DATA_INTEGER(use_nugget);
@@ -108,20 +107,15 @@ Type objective_function<Type>::operator() () {
     // Random effect autocorrelation parameters, transformed scale
     PARAMETER(rho_loc_trans);  // By location
     PARAMETER(rho_year_trans); // By year
-    PARAMETER(rho_week_trans); // By week
     PARAMETER(rho_age_trans);  // By age group
 
     // Variance of space-time-age-year random effect
     PARAMETER(log_sigma_loc);
     PARAMETER(log_sigma_year);
-    PARAMETER(log_sigma_week);
     PARAMETER(log_sigma_age);
     PARAMETER(log_sigma_nugget);
 
     // Correlated random effect surfaces
-    // Multiple possible surfaces can be added together
-    // -> 4-dimensional array of size: (# locations) by (# years) by (# weeks) by (# ages)
-    PARAMETER_ARRAY(Z_stwa);
     // -> 3-dimensional array of size: (# locations) by (# years) by (# ages)
     PARAMETER_ARRAY(Z_sta);
 
@@ -136,10 +130,6 @@ Type objective_function<Type>::operator() () {
 
   // DATA CHECKS -------------------------------------------------------------->
 
-    // Warn if both Z_stwa and Z_sta are being used
-    if(use_Z_sta == 1 && use_Z_stwa == 1){
-      printf("Warning: both STA and STWA random effects are in use.");
-    }
     if(use_Z_fourier == 1 && Z_fourier.cols() / harmonics_level != 2){
       printf("Warning: incorrect number of columns for Z harmonics.");
     }
@@ -154,13 +144,11 @@ Type objective_function<Type>::operator() () {
     // - Convert rho from (-Inf, Inf) to (-1, 1)
     Type rho_loc = rho_transform(rho_loc_trans);
     Type rho_year = rho_transform(rho_year_trans);
-    Type rho_week = rho_transform(rho_week_trans);
     Type rho_age = rho_transform(rho_age_trans);
 
     // Convert from log-sigma (-Inf, Inf) to sigmas (must be positive)
     Type sigma_loc = exp(log_sigma_loc);
     Type sigma_year = exp(log_sigma_year);
-    Type sigma_week = exp(log_sigma_week);
     Type sigma_age = exp(log_sigma_age);
     Type sigma_nugget = exp(log_sigma_nugget);
 
@@ -204,7 +192,6 @@ Type objective_function<Type>::operator() () {
     // TODO: Try messing with variance
     PARALLEL_REGION jnll -= dnorm(sigma_loc, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_year, Type(0.0), Type(3.0), true);
-    PARALLEL_REGION jnll -= dnorm(sigma_week, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_age, Type(0.0), Type(3.0), true);
     PARALLEL_REGION jnll -= dnorm(sigma_nugget, Type(0.0), Type(0.1), true);
 
@@ -215,21 +202,6 @@ Type objective_function<Type>::operator() () {
           PARALLEL_REGION jnll -= dnorm(Z_fourier(i, j), Type(0.0), Type(1.0), true);
         }
       }
-    }
-
-    if(use_Z_stwa == 1){
-      // Evaluation of separable space-year-week-age random effect surface
-      // Rescale AR1 in age and time; spatial RE has already been scaled
-      PARALLEL_REGION jnll += SEPARABLE(\
-          SCALE(AR1(rho_age), sigma_age),\
-          SEPARABLE(\
-              SCALE(AR1(rho_week), sigma_week),\
-              SEPARABLE(\
-                  SCALE(AR1(rho_year), sigma_year),\
-                  GMRF(loc_Q, false)\
-              )\
-          )\
-      )(Z_stwa);
     }
 
     if(use_Z_sta == 1){
@@ -263,9 +235,6 @@ Type objective_function<Type>::operator() () {
       if(idx_holdout(i) != holdout){
         // Determine structured random effect component for this observation
         struct_res_i(i) = 0;
-        if(use_Z_stwa == 1){
-          struct_res_i(i) += Z_stwa(idx_loc(i), idx_year(i), idx_week(i), idx_age(i));
-        }
         if(use_Z_sta == 1){
           struct_res_i(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));
         }

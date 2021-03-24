@@ -32,7 +32,6 @@ ap$add_argument('--holdout', type='integer', default=0, help='Holdout number')
 ap$add_argument(
   '--use-covs', type='character', nargs='+', help='Covariates to use (include intercept)'
 )
-ap$add_argument('--use-Z-stwa', help='Use space-time-week-age RE?', action='store_true')
 ap$add_argument('--use-Z-sta', help='Use space-time-age RE?', action='store_true')
 ap$add_argument('--use-Z-fourier', help='Use periodic-fit RE?', action='store_true')
 ap$add_argument('--use-nugget', help='Add a nugget?', action='store_true')
@@ -50,8 +49,7 @@ args <- ap$parse_args(commandArgs(TRUE))
 #   holdout = 0, use_covs = c(
 #     'intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
 #     'elevation', 'temperature'
-#   ), use_Z_stwa = FALSE, use_Z_sta = TRUE, use_Z_fourier = TRUE,
-#   use_nugget = FALSE, fourier_levels = 3,
+#   ), use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = FALSE, fourier_levels = 3,
 #   fourier_groups = c('location_code')
 # )
 message(str(args))
@@ -102,7 +100,6 @@ data_stack <- list(
   idx_fourier = in_data_final$idx_fourier,
   idx_holdout = in_data_final$idx_holdout,
   loc_adj_mat = as(adjmat, 'dgTMatrix'),
-  use_Z_stwa = as.integer(args$use_Z_stwa),
   use_Z_sta = as.integer(args$use_Z_sta),
   use_Z_fourier = as.integer(args$use_Z_fourier),
   use_nugget = as.integer(args$use_nugget),
@@ -129,20 +126,12 @@ params_list <- list(
   beta_covs = unname(max_a_priori_list$fixed_effects_map),
   beta_ages = unname(max_a_priori_list$fixed_effects_grouping),
   # Rho parameters
-  rho_loc_trans = 0.0, rho_year_trans = 0.0, rho_week_trans = 0.0,
+  rho_loc_trans = 0.0, rho_year_trans = 0.0,
   rho_age_trans = 0.0,
   # Variance parameters
-  log_sigma_loc = 0, log_sigma_year = 0, log_sigma_week = 0,
+  log_sigma_loc = 0, log_sigma_year = 0,
   log_sigma_age = 0, log_sigma_nugget = 0,
-  # Structured random effect
-  Z_stwa = array(0.0,
-    dim = c(
-      nrow(location_table), # Number of locations
-      length(config$model_years), # Number of unique modeled years
-      diff(config$model_week_range) + 1, # Number of weeks in each year
-      length(config$age_cutoffs) # Number of age groups
-    )
-  ),
+  # Structured space-time random effect
   Z_sta = array(0.0,
     dim = c(
       nrow(location_table), # Number of locations
@@ -165,11 +154,6 @@ tmb_map <- list()
 if(length(params_list$beta_ages) > 1){
   tmb_map$beta_ages <- as.factor(c(NA, 2:length(params_list$beta_ages)))
 }
-if(!args$use_Z_stwa){
-  tmb_map$Z_stwa <- rep(as.factor(NA), length(params_list$Z_stwa))
-  tmb_map$rho_week_trans <- as.factor(NA)
-  tmb_map$log_sigma_week <- as.factor(NA)
-}
 if(!args$use_Z_sta) tmb_map$Z_sta <- rep(as.factor(NA), length(params_list$Z_sta))
 if(!args$use_Z_fourier) tmb_map$Z_fourier <- rep(as.factor(NA), length(params_list$Z_fourier))
 if(!args$use_nugget){
@@ -180,7 +164,6 @@ if(!args$use_nugget){
 # Set random effects
 tmb_random <- character(0)
 if(args$use_nugget) tmb_random <- c(tmb_random, 'nugget')
-if(args$use_Z_stwa) tmb_random <- c(tmb_random, 'Z_stwa')
 if(args$use_Z_sta) tmb_random <- c(tmb_random, 'Z_sta')
 if(args$use_Z_fourier) tmb_random <- c(tmb_random, 'Z_fourier')
 
@@ -216,7 +199,7 @@ postest_list <- vector('list', length = ceiling(config$num_draws / 50))
 for(ii in 1:length(postest_list)){
   postest_list[[ii]] <- covidemr::generate_stwa_draws(
     tmb_sdreport = sdrep,
-    keep_params = c("beta_covs", "beta_ages", "Z_stwa", "Z_sta", "Z_fourier"),
+    keep_params = c("beta_covs", "beta_ages", "Z_sta", "Z_fourier"),
     num_draws = min(50, config$num_draws - (ii - 1) * 50),
     covariate_names = use_covs,
     template_dt = template_dt,

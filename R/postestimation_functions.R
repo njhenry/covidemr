@@ -184,12 +184,6 @@ generate_stwa_draws <- function(
   # Random effects -- structure varies
   res <- matrix(0., nrow=nrow(templ), ncol=num_draws)
 
-  if(any(parnames=='Z_stwa')){
-    message("     - Adding joint location-year-week-age random effect")
-    if(nrow(res) != nrow(param_draws["Z_stwa", ])) stop("Z_stwa dims issue")
-    res <- res + param_draws[parnames=="Z_stwa", ]
-  }
-
   if(any(parnames=='Z_sta')){
     message("     - Adding joint location-year-age random effect")
     n_ages <- max(templ$idx_age) + 1
