@@ -45,11 +45,11 @@ ap$add_argument(
 )
 args <- ap$parse_args(commandArgs(TRUE))
 # args <- list(
-#   run_sex = 'female', data_version = '20210113', model_version = '20210113f3fl',
+#   run_sex = 'female', data_version = '20210113', model_version = '20210324dropstwa',
 #   holdout = 0, use_covs = c(
 #     'intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
 #     'elevation', 'temperature'
-#   ), use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = FALSE, fourier_levels = 3,
+#   ), use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = FALSE, fourier_levels = 2,
 #   fourier_groups = c('location_code')
 # )
 message(str(args))
@@ -180,7 +180,7 @@ model_fit <- covidemr::setup_run_tmb(
   tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
   model_name="ITA deaths model",
   verbose=TRUE, inner_verbose=FALSE,
-  optimization_methods = c('nlminb', 'L-BFGS-B')
+  optimization_methods = c('nlminb')
 )
 
 message("Getting sdreport and joint precision matrix...")
