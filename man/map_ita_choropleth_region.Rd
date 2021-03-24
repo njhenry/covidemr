@@ -13,6 +13,7 @@ map_ita_choropleth_region(
   titles_list = list(),
   fill_type = "continuous",
   show_legend = TRUE,
+  labels_dt = NULL,
   save_fp = NULL,
   file_height = 7.25,
   file_width = 6
@@ -40,6 +41,10 @@ included, in the format of arguments to the ggplot `labs` command}
 'discrete' or 'continuous'}
 
 \item{show_legend}{Should the legend be featured on the plot?}
+
+\item{labels_dt}{[optional] Data.table used to label locations on the graph. Should be
+a data.table containing at least the fields `label_name`, `x`, `y`, `x1_lseg`,
+`x2_lseg`, `y1_lseg`, `y2_lseg`}
 
 \item{save_fp}{[optional, default NULL] if not NULL (the default), saves to
 file rather than returning an object. If filled, should be a PNG extension}
