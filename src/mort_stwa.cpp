@@ -168,9 +168,9 @@ Type objective_function<Type>::operator() () {
 
     if(use_Z_sta == 1){
       // Evaluate separable prior against the space-time-age random effects
-      PARALLEL_REGION jnll += SCALE(\
-        SEPARABLE(AR1(rho_age), AR1(rho_year), GMRF(Q_icar)),\
-        sd_sta\ // Scaled by the standard deviation, sqrt(1/Tau)
+      PARALLEL_REGION jnll += SCALE(
+        SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_icar))),\
+        sd_sta\
       )(Z_sta);
 
       // Soft sum-to-zero constraint on the space-time-age random effects
@@ -178,8 +178,12 @@ Type objective_function<Type>::operator() () {
     }
 
     if(use_Z_fourier == 1){
-      // N(mean=0, sd=3) prior for harmonic terms
-      PARALLEL_REGION jnll -= dnorm(Z_fourier, Type(0.0), Type(3.0), true).sum();
+      for(int i = 0; i < Z_fourier.rows(); i++){
+        for(int j = 0; j < Z_fourier.cols(); j++){
+          // N(mean=0, sd=3) prior for harmonic terms
+          PARALLEL_REGION jnll -= dnorm(Z_fourier(i,j), Type(0.0), Type(3.0), true);
+        }
+      }
     }
 
     // Evaluation of prior on nugget
