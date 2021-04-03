@@ -1,4 +1,37 @@
 
+#' Generate an ICAR precision matrix based on an adjacency matrix
+#'
+#' @description Generate a precision matrix for the intrinsic correlated autoregressive
+#'  (ICAR) model specification, a special case of the correlated autoregressive (CAR)
+#'  class of Markov random field models. This precision matrix is usually denoted as "Q".
+#'
+#' @details The precision matrix is fully specified by the adjacency weights, matrix W,
+#'   defined as W = {w_ij} where w_ij is 1 if i and j are neighbors, and 0 otherwise. The
+#'   precision matrix Q is defined as Q = D_w - W, where D_w is a diagonal matrix with
+#'   each diagonal term d_ii equal to the sum of row i in W.
+#'
+#'   Note that the ICAR model is improper, in that the conditional distributions
+#'   specified by the precision matrix do not determine a full joint distribution that
+#'   integrates to 1; in other words, the precision matrix Q is not invertible. The ICAR
+#'   precision matrix can still be used as a prior in a hierarchical model.
+#'
+#'   For more details, see:
+#'   Banerjee, Carlin, and Gelfand (2015). Hierarchical Modeling and Analysis for Spatial
+#'     Data, 2nd Edition. Section 6.4.3.3: CAR models and their difficulties.
+#'
+#' @param W Adjacency matrix, with w_ij = w_ji = 1 if areal units i and j are neighbors,
+#'   and zero otherwise. See function details for more information
+#'
+#' @return Sparse ICAR precision matrix Q. See function details for more information.
+#'
+#' @import Matrix
+#' @export
+icar_precision_from_adjacency <- function(W){
+  # Generate and return sparse precision matrix
+  Q <- Matrix::Diagonal(n = nrow(W), x = Matrix::rowSums(W)) - W
+  return(Q)
+}
+
 #' Assign seasonality grouping IDs
 #'
 #' @description Create a vector that assigns a (zero-indexed) seasonality
