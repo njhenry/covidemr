@@ -99,7 +99,7 @@ data_stack <- list(
   idx_age = in_data_final$idx_age,
   idx_fourier = in_data_final$idx_fourier,
   idx_holdout = in_data_final$idx_holdout,
-  loc_adj_mat = as(adjmat, 'dgTMatrix'),
+  Q_icar = covidemr::icar_precision_from_adjacency(adjmat),
   use_Z_sta = as.integer(args$use_Z_sta),
   use_Z_fourier = as.integer(args$use_Z_fourier),
   use_nugget = as.integer(args$use_nugget),
@@ -126,11 +126,9 @@ params_list <- list(
   beta_covs = unname(max_a_priori_list$fixed_effects_map),
   beta_ages = unname(max_a_priori_list$fixed_effects_grouping),
   # Rho parameters
-  rho_loc_trans = 0.0, rho_year_trans = 0.0,
-  rho_age_trans = 0.0,
+  rho_year_trans = 0.0, rho_age_trans = 0.0,
   # Variance parameters
-  log_sigma_loc = 0, log_sigma_year = 0,
-  log_sigma_age = 0, log_sigma_nugget = 0,
+  log_tau_sta = 0.0, log_tau_nugget = 0.0,
   # Structured space-time random effect
   Z_sta = array(0.0,
     dim = c(
@@ -154,11 +152,14 @@ tmb_map <- list()
 if(length(params_list$beta_ages) > 1){
   tmb_map$beta_ages <- as.factor(c(NA, 2:length(params_list$beta_ages)))
 }
-if(!args$use_Z_sta) tmb_map$Z_sta <- rep(as.factor(NA), length(params_list$Z_sta))
+if(!args$use_Z_sta){
+  tmb_map$Z_sta <- rep(as.factor(NA), length(params_list$Z_sta))
+  tmb_map$log_tau_sta <- as.factor(NA)
+}
 if(!args$use_Z_fourier) tmb_map$Z_fourier <- rep(as.factor(NA), length(params_list$Z_fourier))
 if(!args$use_nugget){
   tmb_map$nugget <- rep(as.factor(NA), length(params_list$nugget))
-  tmb_map$log_sigma_nugget <- as.factor(NA)
+  tmb_map$log_tau_nugget <- as.factor(NA)
 }
 
 # Set random effects
@@ -176,7 +177,7 @@ model_fit <- covidemr::setup_run_tmb(
   params_list=params_list,
   tmb_random=tmb_random,
   tmb_map=tmb_map,
-  normalize = TRUE, run_symbolic_analysis = FALSE,
+  normalize = FALSE, run_symbolic_analysis = FALSE,
   tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
   model_name="ITA deaths model",
   verbose=TRUE, inner_verbose=FALSE,

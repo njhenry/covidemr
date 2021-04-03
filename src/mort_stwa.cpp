@@ -28,23 +28,6 @@ using Eigen::SparseMatrix;
 
 // HELPER FUNCTIONS ----------------------------------------------------------->
 
-// Function for preparing a LCAR precision matrix based on an adjacency matrix
-//  and a distribution
-// Taken from MacNab 2011, adapted from the `ar.matrix` package:
-// https://rdrr.io/cran/ar.matrix/src/R/Q.lCAR.R
-template<class Type>
-SparseMatrix<Type> lcar_q_from_graph(SparseMatrix<Type> graph, Type sigma, Type rho){
-  SparseMatrix<Type> D(graph.rows(), graph.cols());
-  SparseMatrix<Type> I(graph.rows(), graph.cols());
-  for(int ii=0; ii < D.rows(); ii ++){
-    D.insert(ii, ii) = graph.col(ii).sum();
-    I.insert(ii, ii) = 1.0;
-  }
-  SparseMatrix<Type> Q = 1/sigma * (rho * (D - graph) + (1 - rho) * I);
-  return Q;
-}
-
-
 // Transformation from (-Inf, Inf) to (-1, 1) for all rho parameters
 template<class Type>
 Type rho_transform(Type rho){
@@ -63,8 +46,6 @@ Type objective_function<Type>::operator() () {
 
   // INPUT DATA --------------------------------------------------------------->
 
-    DATA_INTEGER(flag);
-
     // OPTION: Holdout number
     // Any observation where `idx_holdout` is equal to `holdout` will be
     //   excluded from this model fit
@@ -76,8 +57,7 @@ Type objective_function<Type>::operator() () {
     DATA_VECTOR(n_i); // Population size for the corresponding group
     DATA_VECTOR(days_exp_i); // Days of exposure in a given week of observations
 
-    // Fixed effects
-    // Matrix of (n observations) * (m covariates including intercept)
+    // Covariate matrix: dimensions (n observations) * (m covariates including intercept)
     DATA_MATRIX(X_ij);
 
     // Indices
@@ -86,15 +66,16 @@ Type objective_function<Type>::operator() () {
     DATA_IVECTOR(idx_week);    // Index for the time period (week)
     DATA_IVECTOR(idx_age);     // Index for the age group
     DATA_IVECTOR(idx_fourier); // Index for the Fourier transform group
-    DATA_IVECTOR(idx_holdout); // Holdout index for each BH observation
+    DATA_IVECTOR(idx_holdout); // Holdout index for each observation
 
-    // Adjacency matrix for locations
-    DATA_SPARSE_MATRIX(loc_adj_mat);
+    // Precision matrix for ICAR priors
+    DATA_SPARSE_MATRIX(Q_icar);
 
     // Which of the correlated random effects structures should be used?
     DATA_INTEGER(use_Z_sta);
     DATA_INTEGER(use_Z_fourier);
     DATA_INTEGER(use_nugget);
+
     DATA_INTEGER(harmonics_level);
 
 
@@ -105,15 +86,13 @@ Type objective_function<Type>::operator() () {
     PARAMETER_VECTOR(beta_ages); // Vector of fixed effects on age group
 
     // Random effect autocorrelation parameters, transformed scale
-    PARAMETER(rho_loc_trans);  // By location
     PARAMETER(rho_year_trans); // By year
     PARAMETER(rho_age_trans);  // By age group
 
-    // Variance of space-time-age-year random effect
-    PARAMETER(log_sigma_loc);
-    PARAMETER(log_sigma_year);
-    PARAMETER(log_sigma_age);
-    PARAMETER(log_sigma_nugget);
+    // Log precision of space-time-age-year random effect
+    PARAMETER(log_tau_sta);
+    // Log precision of the nugget
+    PARAMETER(log_tau_nugget);
 
     // Correlated random effect surfaces
     // -> 3-dimensional array of size: (# locations) by (# years) by (# ages)
@@ -142,24 +121,19 @@ Type objective_function<Type>::operator() () {
 
     // Transform some of our parameters
     // - Convert rho from (-Inf, Inf) to (-1, 1)
-    Type rho_loc = rho_transform(rho_loc_trans);
     Type rho_year = rho_transform(rho_year_trans);
     Type rho_age = rho_transform(rho_age_trans);
 
-    // Convert from log-sigma (-Inf, Inf) to sigmas (must be positive)
-    Type sigma_loc = exp(log_sigma_loc);
-    Type sigma_year = exp(log_sigma_year);
-    Type sigma_age = exp(log_sigma_age);
-    Type sigma_nugget = exp(log_sigma_nugget);
-
-    // Create the LCAR covariance matrix
-    SparseMatrix<Type> loc_Q = lcar_q_from_graph(\
-        loc_adj_mat, sigma_loc, rho_loc\
-    );
+    // Convert from log-tau (-Inf, Inf) to tau (must be positive)
+    Type tau_sta = exp(log_tau_sta);
+    Type sd_sta = exp(log_tau_sta * Type(-0.5));
+    Type tau_nugget = exp(log_tau_nugget);
+    Type sd_nugget = exp(log_tau_nugget * Type(-0.5));
 
     // Vectors of fixed and structured random effects for all data points
-    vector<Type> fes_i(num_obs);
-    vector<Type> struct_res_i(num_obs);
+    vector<Type> fix_effs(num_obs);
+    vector<Type> ran_effs(num_obs);
+    ran_effs.setZero();
 
     // Create a vector to hold data-specific estimates of the mortality rate
     //   per person-week
@@ -176,80 +150,68 @@ Type objective_function<Type>::operator() () {
 
   // JNLL CONTRIBUTION FROM PRIORS -------------------------------------------->
 
-    // N(0, 3) prior for fixed effects
+    // N(mean=0, sd=3) prior for fixed effects
     // Skip the intercept (index 0)
     for(int j = 1; j < num_covs; j++){
       PARALLEL_REGION jnll -= dnorm(beta_covs(j), Type(0.0), Type(3.0), true);
     }
 
-    // N(0, 3) prior for age effects
+    // N(mean=0, sd=3) prior for age effects
     // Skip the first age group (index 0)
     for(int j = 1; j < beta_ages.size(); j++){
       PARALLEL_REGION jnll -= dnorm(beta_ages(j), Type(0.0), Type(3.0), true);
     }
 
-    // N(0, 3) prior for sigmas
-    // TODO: Try messing with variance
-    PARALLEL_REGION jnll -= dnorm(sigma_loc, Type(0.0), Type(3.0), true);
-    PARALLEL_REGION jnll -= dnorm(sigma_year, Type(0.0), Type(3.0), true);
-    PARALLEL_REGION jnll -= dnorm(sigma_age, Type(0.0), Type(3.0), true);
-    PARALLEL_REGION jnll -= dnorm(sigma_nugget, Type(0.0), Type(0.1), true);
-
-    if(use_Z_fourier == 1){
-      // N(0, 1) prior for harmonics
-      for(int i = 0; i < Z_fourier.rows(); i++){
-        for(int j = 0; j < Z_fourier.cols(); j++){
-          PARALLEL_REGION jnll -= dnorm(Z_fourier(i, j), Type(0.0), Type(1.0), true);
-        }
-      }
-    }
+    // Wide gamma priors for tau precision parameters
+    PARALLEL_REGION jnll -= dlgamma(tau_sta, Type(1.0), Type(20.0), true);
+    PARALLEL_REGION jnll -= dlgamma(tau_nugget, Type(1.0), Type(20.0), true);
 
     if(use_Z_sta == 1){
-      // Evaluation of separable space-year-age random effect surface
-      // Rescale AR1 in age and time; spatial RE has already been scaled
-      PARALLEL_REGION jnll += SEPARABLE(\
-          SCALE(AR1(rho_age), sigma_age),\
-          SEPARABLE(\
-              SCALE(AR1(rho_year), sigma_year),\
-              GMRF(loc_Q, false)\
-          )\
+      // Evaluate separable prior against the space-time-age random effects
+      PARALLEL_REGION jnll += SCALE(\
+        SEPARABLE(AR1(rho_age), AR1(rho_year), GMRF(Q_icar)),\
+        sd_sta\ // Scaled by the standard deviation, sqrt(1/Tau)
       )(Z_sta);
+
+      // Soft sum-to-zero constraint on the space-time-age random effects
+      PARALLEL_REGION jnll -= dnorm(Z_sta.sum(), Type(0.0), Type(0.001) * Z_sta.size(), true);
     }
 
-    // Evaluation of nugget
+    if(use_Z_fourier == 1){
+      // N(mean=0, sd=3) prior for harmonic terms
+      PARALLEL_REGION jnll -= dnorm(Z_fourier, Type(0.0), Type(3.0), true).sum();
+    }
+
+    // Evaluation of prior on nugget
     if(use_nugget == 1){
-      for(int i = 0; i < num_obs; i++){
-        PARALLEL_REGION jnll -= dnorm(nugget(i), Type(0.0), sigma_nugget, true);
-      }
+      PARALLEL_REGION jnll -= dnorm(nugget, Type(0.0), sd_nugget, true).sum();
     }
-
-    if(flag == 0) return jnll;
 
 
   // JNLL CONTRIBUTION FROM DATA ---------------------------------------------->
 
     // Determine fixed effect component for all observations
-    fes_i = X_ij * beta_covs.matrix();
+    fix_effs = X_ij * beta_covs.matrix();
 
     for(int i=0; i < num_obs; i++){
       if(idx_holdout(i) != holdout){
-        // Determine structured random effect component for this observation
-        struct_res_i(i) = 0;
+
+        // Determine random effect component for this observation
         if(use_Z_sta == 1){
-          struct_res_i(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));
+          ran_effs(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));
         }
         if(use_Z_fourier == 1){
           for(int lev=1; lev <= harmonics_level; lev++){
-            struct_res_i(i) += Z_fourier(idx_fourier(i), 2*lev-2) * sin(lev * (idx_week(i) + 1.0) * year_freq ) + \
+            ran_effs(i) += Z_fourier(idx_fourier(i), 2*lev-2) * sin(lev * (idx_week(i) + 1.0) * year_freq ) + \
               Z_fourier(idx_fourier(i), 2*lev-1) * cos(lev * (idx_week(i) + 1.0) * year_freq);
           }
         }
         if(use_nugget == 1){
-          struct_res_i(i) += nugget(i);
+          ran_effs(i) += nugget(i);
         }
 
-        // Determine most likely weekly mortality rate for this observation
-        weekly_mort_rate_i(i) = exp(fes_i(i) + beta_ages(idx_age(i)) + struct_res_i(i));
+        // Estimate weekly mortality rate based on log-linear mixed effects model
+        weekly_mort_rate_i(i) = exp(fix_effs(i) + beta_ages(idx_age(i)) + ran_effs(i));
 
         // Use the dpois PDF function centered around:
         //  lambda = population * weekly mort rate * (observed days / 7)
