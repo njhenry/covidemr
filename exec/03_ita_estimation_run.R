@@ -109,7 +109,8 @@ data_stack <- list(
   use_Z_sta = as.integer(args$use_Z_sta),
   use_Z_fourier = as.integer(args$use_Z_fourier),
   use_nugget = as.integer(args$use_nugget),
-  harmonics_level = as.integer(args$fourier_levels)
+  harmonics_level = as.integer(args$fourier_levels),
+  flag = 1
 )
 
 
