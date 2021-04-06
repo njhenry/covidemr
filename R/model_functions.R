@@ -15,22 +15,38 @@
 #'   integrates to 1; in other words, the precision matrix Q is not invertible. The ICAR
 #'   precision matrix can still be used as a prior in a hierarchical model.
 #'
+#'   This function includes optional argument `scale_variance`. If set to `TRUE` (the
+#'   default), the function will rescale the precision matrix to have a generalized
+#'   variance of 1, which may aid in prior specifications that are comparable across
+#'   areal spatial models with different geometries.
+#'
 #'   For more details, see:
 #'   Banerjee, Carlin, and Gelfand (2015). Hierarchical Modeling and Analysis for Spatial
 #'     Data, 2nd Edition. Section 6.4.3.3: CAR models and their difficulties.
+#'   Riebler et al. (2016). An intuitive Bayesian sptial model for disease mapping that
+#'     accounts for scaling. Statistical methods in medical research, 25(4):1145-65.
 #'
 #' @param W Adjacency matrix, with w_ij = w_ji = 1 if areal units i and j are neighbors,
 #'   and zero otherwise. See function details for more information
+#' @param scale_variance [default TRUE] Should the precision matrix be rescaled so that
+#'  the generalized variance is equal to 1? Setting to TRUE may help with prior
+#'  specification.
 #'
 #' @return Sparse ICAR precision matrix Q. See function details for more information.
 #'
-#' @import Matrix
+#' @import Matrix INLA
 #' @export
-icar_precision_from_adjacency <- function(W){
+icar_precision_from_adjacency <- function(W, scale_variance = TRUE){
   # Generate and return sparse precision matrix
   Q <- Matrix::Diagonal(n = nrow(W), x = Matrix::rowSums(W)) - W
+  if(scale_variance){
+    # Scale model to have generalized variance of 1
+    constraint_matrix <- matrix(1, nrow = 1, ncol = ncol(Q))
+    Q <- INLA::inla.scale.model(Q, constr = list(A = constraint_matrix, e = 0))
+  }
   return(Q)
 }
+
 
 #' Assign seasonality grouping IDs
 #'

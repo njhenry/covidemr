@@ -44,14 +44,14 @@ ap$add_argument(
   help='Grouping fields for seasonality (default one group for all data)'
 )
 args <- ap$parse_args(commandArgs(TRUE))
-# args <- list(
-#   run_sex = 'female', data_version = '20210113', model_version = '20210324dropstwa',
-#   holdout = 0, use_covs = c(
-#     'intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
-#     'elevation', 'temperature'
-#   ), use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = FALSE, fourier_levels = 2,
-#   fourier_groups = c('location_code')
-# )
+args <- list(
+  run_sex = 'female', data_version = '20210113', model_version = '20210402_icar',
+  holdout = 0, use_covs = c(
+    'intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
+    'elevation', 'temperature'
+  ), use_Z_sta = TRUE, use_Z_fourier = FALSE, use_nugget = FALSE, fourier_levels = 2,
+  fourier_groups = c('location_code')
+)
 message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
 
@@ -73,7 +73,6 @@ template_dt <- template_dt[sex==args$run_sex, ]
 template_dt$idx_fourier <- assign_seasonality_ids(
   input_data = template_dt, grouping_fields = args$fourier_groups
 )
-
 prepped_data <- prepped_data[sex==args$run_sex, ]
 # Set holdout IDs
 prepped_data$idx_fourier <- assign_seasonality_ids(
@@ -82,6 +81,9 @@ prepped_data$idx_fourier <- assign_seasonality_ids(
 
 # Subset to only input data for this model
 in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baseline==1), ]
+
+# Define a scaled ICAR precision matrix based on spatial adjacency
+Q_icar = covidemr::icar_precision_from_adjacency(adjmat, scale_variance = TRUE)
 
 
 ## Define input data stack (the data used to fit the model) --------------------
@@ -99,7 +101,7 @@ data_stack <- list(
   idx_age = in_data_final$idx_age,
   idx_fourier = in_data_final$idx_fourier,
   idx_holdout = in_data_final$idx_holdout,
-  Q_icar = covidemr::icar_precision_from_adjacency(adjmat),
+  Q_icar = Q_icar,
   use_Z_sta = as.integer(args$use_Z_sta),
   use_Z_fourier = as.integer(args$use_Z_fourier),
   use_nugget = as.integer(args$use_nugget),
@@ -180,7 +182,7 @@ model_fit <- covidemr::setup_run_tmb(
   normalize = FALSE, run_symbolic_analysis = FALSE,
   tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
   model_name="ITA deaths model",
-  verbose=TRUE, inner_verbose=FALSE,
+  verbose=TRUE, inner_verbose=TRUE,
   optimization_methods = c('nlminb')
 )
 
