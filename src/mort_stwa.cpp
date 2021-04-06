@@ -70,6 +70,8 @@ Type objective_function<Type>::operator() () {
 
     // Precision matrix for ICAR priors
     DATA_SPARSE_MATRIX(Q_icar);
+    // Rank deficiency of precision matrix
+    DATA_SCALAR(Q_rank_deficiency);
 
     // Which of the correlated random effects structures should be used?
     DATA_INTEGER(use_Z_sta);
@@ -77,6 +79,9 @@ Type objective_function<Type>::operator() () {
     DATA_INTEGER(use_nugget);
 
     DATA_INTEGER(harmonics_level);
+
+    // If the `flag` is 0, return the jnll before incorporating data
+    DATA_INTEGER(flag);
 
 
   // INPUT PARAMETERS --------------------------------------------------------->
@@ -107,17 +112,14 @@ Type objective_function<Type>::operator() () {
     PARAMETER_VECTOR(nugget);
 
 
-  // DATA CHECKS -------------------------------------------------------------->
-
-    if(use_Z_fourier == 1 && Z_fourier.cols() / harmonics_level != 2){
-      printf("Warning: incorrect number of columns for Z harmonics.");
-    }
-
   // TRANSFORM DATA AND PARAMETER OBJECTS ------------------------------------->
 
     // Basic indices
     int num_obs = y_i.size();
     int num_covs = beta_covs.size();
+    int num_locs = Z_sta.dim(0);
+    int num_years = Z_sta.dim(1);
+    int num_ages = Z_sta.dim(2);
 
     // Transform some of our parameters
     // - Convert rho from (-Inf, Inf) to (-1, 1)
@@ -163,11 +165,14 @@ Type objective_function<Type>::operator() () {
     }
 
     // Wide gamma priors for tau precision parameters
-    PARALLEL_REGION jnll -= dlgamma(tau_sta, Type(1.0), Type(20.0), true);
-    PARALLEL_REGION jnll -= dlgamma(tau_nugget, Type(1.0), Type(20.0), true);
+    PARALLEL_REGION jnll -= dlgamma(tau_sta, Type(1.0), Type(1000.0), true);
+    PARALLEL_REGION jnll -= dlgamma(tau_nugget, Type(1.0), Type(1000.0), true);
 
     if(use_Z_sta == 1){
-      // Evaluate separable prior against the space-time-age random effects
+      // Evaluate separable prior against the space-time-age random effects:
+      // Spatial effect = ICAR by province
+      // Time effect = AR1 by year
+      // Age effect = AR1 by age group
       PARALLEL_REGION jnll += SCALE(
         SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_icar))),\
         sd_sta\
@@ -175,6 +180,14 @@ Type objective_function<Type>::operator() () {
 
       // Soft sum-to-zero constraint on the space-time-age random effects
       PARALLEL_REGION jnll -= dnorm(Z_sta.sum(), Type(0.0), Type(0.001) * Z_sta.size(), true);
+
+      // Adjust normalizing constant to account for rank deficiency of the ICAR precision
+      //  matrix:
+      // 1) Calculate log(generalized variance) of outer product matrix
+      Type kronecker_log_genvar = log(1 - rho_age * rho_age) * num_locs * num_years +\
+        log(1 - rho_year * rho_year) * num_locs * num_ages;
+      // 2) Adjust normalizing constant
+      PARALLEL_REGION jnll -= Q_rank_deficiency * 0.5 * (kronecker_log_genvar - log(2 * PI));
     }
 
     if(use_Z_fourier == 1){
@@ -191,6 +204,10 @@ Type objective_function<Type>::operator() () {
       PARALLEL_REGION jnll -= dnorm(nugget, Type(0.0), sd_nugget, true).sum();
     }
 
+    // If the `flag` is 0, currently calculating the normalizing constant - return jnll
+    //   without incorporating data
+    if (flag == 0) return jnll;
+
 
   // JNLL CONTRIBUTION FROM DATA ---------------------------------------------->
 
@@ -206,7 +223,7 @@ Type objective_function<Type>::operator() () {
         }
         if(use_Z_fourier == 1){
           for(int lev=1; lev <= harmonics_level; lev++){
-            ran_effs(i) += Z_fourier(idx_fourier(i), 2*lev-2) * sin(lev * (idx_week(i) + 1.0) * year_freq ) + \
+            ran_effs(i) += Z_fourier(idx_fourier(i), 2*lev-2) * sin(lev * (idx_week(i) + 1.0) * year_freq) + \
               Z_fourier(idx_fourier(i), 2*lev-1) * cos(lev * (idx_week(i) + 1.0) * year_freq);
           }
         }

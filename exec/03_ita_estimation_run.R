@@ -84,6 +84,9 @@ in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baseline==1), ]
 
 # Define a scaled ICAR precision matrix based on spatial adjacency
 Q_icar = covidemr::icar_precision_from_adjacency(adjmat, scale_variance = TRUE)
+# Calculate the rank deficiency of the adjusted ICAR matrix, needed to calculate the
+#  normalizing constant for the JNLL
+Q_rank_deficiency = nrow(Q_icar) - as.integer(Matrix::rankMatrix(Q_icar))
 
 
 ## Define input data stack (the data used to fit the model) --------------------
@@ -102,6 +105,7 @@ data_stack <- list(
   idx_fourier = in_data_final$idx_fourier,
   idx_holdout = in_data_final$idx_holdout,
   Q_icar = Q_icar,
+  Q_rank_deficiency = Q_rank_deficiency,
   use_Z_sta = as.integer(args$use_Z_sta),
   use_Z_fourier = as.integer(args$use_Z_fourier),
   use_nugget = as.integer(args$use_nugget),
