@@ -333,7 +333,7 @@ setup_run_tmb <- function(
       lower = fe_lower_vec, upper = fe_upper_vec,
       method = this_method,
       itnmax = tmb_outer_maxsteps,
-      hessian = FALSE,
+      hessian = FALSE, kkt = FALSE,
       control = list(
         trace = as.integer(verbose),
         dowarn = as.integer(verbose),
