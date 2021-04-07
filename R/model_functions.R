@@ -329,19 +329,15 @@ setup_run_tmb <- function(
   for(this_method in optimization_methods){
     message(glue("\n** OPTIMIZING USING METHOD {this_method} **"))
     opt <- optimx(
-      par = obj$par,
-      fn = function(x) as.numeric(obj$fn(x)),
-      gr = obj$gr,
-      lower = fe_lower_vec,
-      upper = fe_upper_vec,
+      par = obj$par, fn = obj$fn, gr = obj$gr,
+      lower = fe_lower_vec, upper = fe_upper_vec,
       method = this_method,
       itnmax = tmb_outer_maxsteps,
+      hessian = FALSE,
       control = list(
         trace = as.integer(verbose),
-        follow.on = FALSE,
         dowarn = as.integer(verbose),
         maxit = tmb_inner_maxsteps,
-        reltol = 1e-10,
         starttests = FALSE
       )
     )
