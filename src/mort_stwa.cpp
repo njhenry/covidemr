@@ -25,7 +25,6 @@
 using namespace density;
 using Eigen::SparseMatrix;
 
-
 // HELPER FUNCTIONS ----------------------------------------------------------->
 
 // Transformation from (-Inf, Inf) to (-1, 1) for all rho parameters
@@ -174,18 +173,28 @@ Type objective_function<Type>::operator() () {
       // Time effect = AR1 by year
       // Age effect = AR1 by age group
       PARALLEL_REGION jnll += SCALE(
-        SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_icar))),\
-        sd_sta\
+        SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_icar))),
+        sd_sta
       )(Z_sta);
 
-      // Soft sum-to-zero constraint on the space-time-age random effects
-      PARALLEL_REGION jnll -= dnorm(Z_sta.sum(), Type(0.0), Type(0.001) * Z_sta.size(), true);
+      // Soft sum-to-zero constraint on each layer of spatial random effects
+      for(int age_i = 0; age_i < num_ages; age_i++){
+        for(int year_i = 0; year_i < num_years; year_i++){
+          Type sum_res = 0.0;
+          for(int loc_i = 0; loc_i < num_locs; loc_i++){
+            sum_res += Z_sta(loc_i, year_i, age_i);
+          }
+          PARALLEL_REGION jnll -= dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true);
+        }
+      }
 
       // Adjust normalizing constant to account for rank deficiency of the ICAR precision
       //  matrix:
       // 1) Calculate log(generalized variance) of outer product matrix
-      Type kronecker_log_genvar = log(1 - rho_age * rho_age) * num_locs * num_years +\
-        log(1 - rho_year * rho_year) * num_locs * num_ages;
+      Type kronecker_log_genvar = (
+        log(1 - rho_age * rho_age) * num_locs * num_years +
+        log(1 - rho_year * rho_year) * num_locs * num_ages
+      );
       // 2) Adjust normalizing constant
       PARALLEL_REGION jnll -= Q_rank_deficiency * 0.5 * (kronecker_log_genvar - log(2 * PI));
     }
@@ -223,8 +232,10 @@ Type objective_function<Type>::operator() () {
         }
         if(use_Z_fourier == 1){
           for(int lev=1; lev <= harmonics_level; lev++){
-            ran_effs(i) += Z_fourier(idx_fourier(i), 2*lev-2) * sin(lev * (idx_week(i) + 1.0) * year_freq) + \
-              Z_fourier(idx_fourier(i), 2*lev-1) * cos(lev * (idx_week(i) + 1.0) * year_freq);
+            ran_effs(i) += (
+              Z_fourier(idx_fourier(i), 2*lev-2) * sin(lev * (idx_week(i) + 1.0) * year_freq) +
+              Z_fourier(idx_fourier(i), 2*lev-1) * cos(lev * (idx_week(i) + 1.0) * year_freq)
+            );
           }
         }
         if(use_nugget == 1){
@@ -236,8 +247,8 @@ Type objective_function<Type>::operator() () {
 
         // Use the dpois PDF function centered around:
         //  lambda = population * weekly mort rate * (observed days / 7)
-        PARALLEL_REGION jnll -= dpois(\
-            y_i(i), n_i(i) * weekly_mort_rate_i(i) * days_exp_i(i) / 7.0, true\
+        PARALLEL_REGION jnll -= dpois(
+            y_i(i), n_i(i) * weekly_mort_rate_i(i) * days_exp_i(i) / 7.0, true
         );
       }
     }
