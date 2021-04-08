@@ -298,6 +298,7 @@ setup_run_tmb <- function(
     data=tmb_data_stack,
     parameters=params_list,
     random=tmb_random,
+    method='nlminb',
     map=tmb_map,
     DLL='covidemr',
     silent=inner_verbose
@@ -324,13 +325,13 @@ setup_run_tmb <- function(
   tictoc::tic("  Optimization")
   # Try optimizing using a variety of algorithms (all fit in optimx)
   opt <- nlminb(
-    start = obj$par, objective = obj$fn, gradient = obj$gr,
+    start = obj$par, objective = function(x) as.numeric(obj$fn(x)),
+    gradient = function(x) as.numeric(obj$gr(x)),
     lower = fe_lower_vec, upper = fe_upper_vec,
     control = list(
       eval.max = tmb_inner_maxsteps,
       iter.max = tmb_outer_maxsteps,
-      trace = as.integer(verbose),
-      rel.tol = 1E-10
+      trace = as.integer(verbose)
     )
   )
   conv_code <- opt$convergence
