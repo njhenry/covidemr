@@ -93,10 +93,10 @@ Type objective_function<Type>::operator() () {
     PARAMETER(rho_year_trans); // By year
     PARAMETER(rho_age_trans);  // By age group
 
-    // Log precision of space-time-age-year random effect
-    PARAMETER(log_tau_sta);
-    // Log precision of the nugget
-    PARAMETER(log_tau_nugget);
+    // Log precision of space-year-age random effect / the nugget (BYM-Dean model)
+    PARAMETER(log_tau_b);
+    // Mixing parameter between space-year-age random effect and the nugget
+    PARAMETER(logit_phi_b);
 
     // Correlated random effect surfaces
     // -> 3-dimensional array of size: (# locations) by (# years) by (# ages)
@@ -125,11 +125,10 @@ Type objective_function<Type>::operator() () {
     Type rho_year = rho_transform(rho_year_trans);
     Type rho_age = rho_transform(rho_age_trans);
 
-    // Convert from log-tau (-Inf, Inf) to tau (must be positive)
-    Type tau_sta = exp(log_tau_sta);
-    Type sd_sta = exp(log_tau_sta * Type(-0.5));
-    Type tau_nugget = exp(log_tau_nugget);
-    Type sd_nugget = exp(log_tau_nugget * Type(-0.5));
+    // Convert from log-tau (-Inf, Inf) to tau (0, Inf)
+    Type tau_b = exp(log_tau_b);
+    // Convert from logit-phi (-Inf, Inf) to phi (0, 1)
+    Type phi_b = exp(logit_phi_b)/(exp(logit_phi_b) + 1);
 
     // Vectors of fixed and structured random effects for all data points
     vector<Type> fix_effs(num_obs);
@@ -163,18 +162,17 @@ Type objective_function<Type>::operator() () {
       PARALLEL_REGION jnll -= dnorm(beta_ages(j), Type(0.0), Type(3.0), true);
     }
 
-    // Wide gamma priors for tau precision parameters
-    PARALLEL_REGION jnll -= dlgamma(tau_sta, Type(1.0), Type(1000.0), true);
-    PARALLEL_REGION jnll -= dlgamma(tau_nugget, Type(1.0), Type(1000.0), true);
+    // Flat prior for mixing parameter phi
+    // Wide gamma prior for precision parameter tau
+    PARALLEL_REGION jnll -= dlgamma(tau_b, Type(1.0), Type(1000.0), true);
 
     if(use_Z_sta == 1){
       // Evaluate separable prior against the space-time-age random effects:
       // Spatial effect = ICAR by province
       // Time effect = AR1 by year
       // Age effect = AR1 by age group
-      PARALLEL_REGION jnll += SCALE(
-        SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_icar))),
-        sd_sta
+      PARALLEL_REGION jnll += SEPARABLE(
+        AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_icar))
       )(Z_sta);
 
       // Soft sum-to-zero constraint on each layer of spatial random effects
@@ -208,9 +206,9 @@ Type objective_function<Type>::operator() () {
       }
     }
 
-    // Evaluation of prior on nugget
+    // Evaluation of prior on (unscaled) nugget
     if(use_nugget == 1){
-      PARALLEL_REGION jnll -= dnorm(nugget, Type(0.0), sd_nugget, true).sum();
+      PARALLEL_REGION jnll -= dnorm(nugget, Type(0.0), Type(1.0), true).sum();
     }
 
     // If the `flag` is 0, currently calculating the normalizing constant - return jnll
@@ -226,20 +224,19 @@ Type objective_function<Type>::operator() () {
     for(int i=0; i < num_obs; i++){
       if(idx_holdout(i) != holdout){
 
-        // Determine random effect component for this observation
-        if(use_Z_sta == 1){
-          ran_effs(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));
-        }
-        if(use_Z_fourier == 1){
-          for(int lev=1; lev <= harmonics_level; lev++){
-            ran_effs(i) += (
-              Z_fourier(idx_fourier(i), 2*lev-2) * sin(lev * (idx_week(i) + 1.0) * year_freq) +
-              Z_fourier(idx_fourier(i), 2*lev-1) * cos(lev * (idx_week(i) + 1.0) * year_freq)
-            );
-          }
-        }
-        if(use_nugget == 1){
-          ran_effs(i) += nugget(i);
+        // Random effect is a mixture of spatially correlated and IID terms, determined
+        // by the Dean parameterization of the Besag-York-Mollie model
+        ran_effs(i) += 1 / sqrt(tau_b) * (
+          sqrt(1 - phi_b) * nugget(i) +
+          sqrt(phi_b) * Z_sta(idx_loc(i), idx_year(i), idx_age(i))
+        );
+
+        // Seasonal variation is fit according to a sum of harmonic curves
+        for(int lev=1; lev <= harmonics_level; lev++){
+          ran_effs(i) += (
+            Z_fourier(idx_fourier(i), 2*lev-2) * sin(lev * (idx_week(i) + 1.0) * year_freq) +
+            Z_fourier(idx_fourier(i), 2*lev-1) * cos(lev * (idx_week(i) + 1.0) * year_freq)
+          );
         }
 
         // Estimate weekly mortality rate based on log-linear mixed effects model
