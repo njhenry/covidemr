@@ -291,40 +291,40 @@ setup_run_tmb <- function(
   # Add a flag to the data input stack if normalize is specified
   if(normalize) tmb_data_stack$flag <- 1
 
-  # Make Autodiff function
-  vbmsg("Constructing ADFunction...")
-  tictoc::tic("  Making Model ADFun")
-  obj <- TMB::MakeADFun(
-    data=tmb_data_stack,
-    parameters=params_list,
-    random=tmb_random,
-    method='nlminb',
-    map=tmb_map,
-    DLL='covidemr',
-    silent=inner_verbose
-  )
-  obj$env$tracemgc <- as.integer(verbose)
-  obj$env$inner.control$trace <- as.integer(inner_verbose)
-  tictoc::toc()
-  # Optionally run a normalization fix for models with large random effect sets
-  if(normalize) obj <- normalize_adfun(adfun=obj, flag='flag', verbose=verbose)
-  # Optionally run optimization algorithms to improve model run time
-  if(run_symbolic_analysis) run_sparsity_algorithm(adfun=obj, verbose=verbose)
-  # Optionally set upper and lower limits for fixed effects
-  fe_names <- names(obj$par)
-  if(set_limits==TRUE){
-    fe_lower_vec = rep(limit_min, times=length(fe_names))
-    fe_upper_vec = rep(limit_max, times=length(fe_names))
-    names(fe_lower_vec) <- names(fe_upper_vec) <- fe_names
-    vbmsg(glue::glue("Fixed effects limited to the range [{limit_min},{limit_max}]."))
-  } else {
-    fe_lower_vec <- -Inf
-    fe_upper_vec <- Inf
-  }
-  # Optimize using nlminb
-  tictoc::tic("  Optimization")
   # Try optimizing using a variety of algorithms (all fit in optimx)
   for(this_method in optimization_methods){
+    # Make Autodiff function
+    vbmsg("Constructing ADFunction...")
+    tictoc::tic("  Making Model ADFun")
+    obj <- TMB::MakeADFun(
+      data=tmb_data_stack,
+      parameters=params_list,
+      random=tmb_random,
+      method='nlminb',
+      map=tmb_map,
+      DLL='covidemr',
+      silent=inner_verbose
+    )
+    obj$env$tracemgc <- as.integer(verbose)
+    obj$env$inner.control$trace <- as.integer(inner_verbose)
+    tictoc::toc()
+    # Optionally run a normalization fix for models with large random effect sets
+    if(normalize) obj <- normalize_adfun(adfun=obj, flag='flag', verbose=verbose)
+    # Optionally run optimization algorithms to improve model run time
+    if(run_symbolic_analysis) run_sparsity_algorithm(adfun=obj, verbose=verbose)
+    # Optionally set upper and lower limits for fixed effects
+    fe_names <- names(obj$par)
+    if(set_limits==TRUE){
+      fe_lower_vec = rep(limit_min, times=length(fe_names))
+      fe_upper_vec = rep(limit_max, times=length(fe_names))
+      names(fe_lower_vec) <- names(fe_upper_vec) <- fe_names
+      vbmsg(glue::glue("Fixed effects limited to the range [{limit_min},{limit_max}]."))
+    } else {
+      fe_lower_vec <- -Inf
+      fe_upper_vec <- Inf
+    }
+    # Optimize using nlminb
+    tictoc::tic("  Optimization")
     message(glue("\n** OPTIMIZING USING METHOD {this_method} **"))
     opt <- optimx(
       par = obj$par, fn = obj$fn, gr = obj$gr,
