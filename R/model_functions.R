@@ -324,24 +324,33 @@ setup_run_tmb <- function(
   # Optimize using nlminb
   tictoc::tic("  Optimization")
   # Try optimizing using a variety of algorithms (all fit in optimx)
-  opt <- nlminb(
-    start = obj$par, objective = function(x) as.numeric(obj$fn(x)),
-    gradient = function(x) as.numeric(obj$gr(x)),
-    lower = fe_lower_vec, upper = fe_upper_vec,
-    control = list(
-      eval.max = tmb_inner_maxsteps,
-      iter.max = tmb_outer_maxsteps,
-      trace = as.integer(verbose)
+  for(this_method in optimization_methods){
+    message(glue("\n** OPTIMIZING USING METHOD {this_method} **"))
+    opt <- optimx(
+      par = obj$par, fn = obj$fn, gr = obj$gr,
+      lower = fe_lower_vec, upper = fe_upper_vec,
+      method = this_method,
+      itnmax = tmb_outer_maxsteps,
+      hessian = TRUE, kkt = TRUE,
+      control = list(
+        trace = as.integer(verbose),
+        dowarn = as.integer(verbose),
+        maxit = tmb_inner_maxsteps,
+        starttests = FALSE
+      )
     )
-  )
-  conv_code <- opt$convergence
-  if(conv_code == 0){
-    message("Optimization converged using method nlminb!")
-  } else {
-    message(glue("Optimization failed using method nlminb (code {conv_code})\n"))
+    if(opt$convcode == 0){
+      message(glue("Optimization converged using method {this_method}!"))
+      break()
+    } else {
+      message(glue("Optimization failed using method {this_method} (code {opt$convcode})\n"))
+    }
   }
+  conv_code <- opt$convcode
+  vbmsg(glue::glue(
+    "{model_name} optimization finished with convergence code {conv_code}.\n"
+  ))
   tictoc::toc()
   vbmsg(glue::glue("*** {model_name} RUN COMPLETE **************\n\n"))
   return(list(obj=obj, opt=opt))
 }
-

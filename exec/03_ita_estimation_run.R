@@ -45,11 +45,11 @@ ap$add_argument(
 )
 args <- ap$parse_args(commandArgs(TRUE))
 # args <- list(
-#   run_sex = 'female', data_version = '20210113', model_version = '20210402_icar',
+#   run_sex = 'female', data_version = '20210113', model_version = '20210402_icar_nugget',
 #   holdout = 0, use_covs = c(
 #     'intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
 #     'elevation', 'temperature'
-#   ), use_Z_sta = TRUE, use_Z_fourier = FALSE, use_nugget = FALSE, fourier_levels = 2,
+#   ), use_Z_sta = TRUE, use_Z_fourier = FALSE, use_nugget = TRUE, fourier_levels = 2,
 #   fourier_groups = c('location_code')
 # )
 message(str(args))
@@ -132,7 +132,7 @@ params_list <- list(
   beta_covs = unname(max_a_priori_list$fixed_effects_map),
   beta_ages = unname(max_a_priori_list$fixed_effects_grouping),
   # Rho parameters
-  rho_year_trans = 0.0, rho_age_trans = 0.0,
+  rho_year_trans = 1.0, rho_age_trans = 1.0,
   # Variance parameters
   log_tau_sta = 0.0, log_tau_nugget = 0.0,
   # Structured space-time random effect
@@ -187,7 +187,7 @@ model_fit <- covidemr::setup_run_tmb(
   tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
   model_name="ITA deaths model",
   verbose=TRUE, inner_verbose=TRUE,
-  optimization_methods = c('nlminb')
+  optimization_methods = c('L-BFGS-B','nlminb')
 )
 
 message("Getting sdreport and joint precision matrix...")
