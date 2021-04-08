@@ -163,8 +163,8 @@ Type objective_function<Type>::operator() () {
     }
 
     // Wide gamma priors for tau precision parameters
-    PARALLEL_REGION jnll -= dlgamma(tau_sta, Type(1.0), Type(1000.0), true);
-    PARALLEL_REGION jnll -= dlgamma(tau_nugget, Type(1.0), Type(1000.0), true);
+    PARALLEL_REGION jnll -= dnorm(log_tau_sta, Type(0.0), Type(1000.0), true);
+    PARALLEL_REGION jnll -= dnorm(log_tau_nugget, Type(0.0), Type(1000.0), true);
 
     if(use_Z_sta == 1){
       // Evaluate separable prior against the space-time-age random effects:
