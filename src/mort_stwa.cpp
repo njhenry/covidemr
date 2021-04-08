@@ -79,9 +79,6 @@ Type objective_function<Type>::operator() () {
 
     DATA_INTEGER(harmonics_level);
 
-    // If the `flag` is 0, return the jnll before incorporating data
-    DATA_INTEGER(flag);
-
 
   // INPUT PARAMETERS --------------------------------------------------------->
 
@@ -134,7 +131,9 @@ Type objective_function<Type>::operator() () {
     // Vectors of fixed and structured random effects for all data points
     vector<Type> fix_effs(num_obs);
     vector<Type> ran_effs(num_obs);
+    vector<Type> seasonality(num_obs);
     ran_effs.setZero();
+    seasonality.setZero();
 
     // Create a vector to hold data-specific estimates of the mortality rate
     //   per person-week
@@ -213,10 +212,6 @@ Type objective_function<Type>::operator() () {
       PARALLEL_REGION jnll -= dnorm(nugget, Type(0.0), sd_nugget, true).sum();
     }
 
-    // If the `flag` is 0, currently calculating the normalizing constant - return jnll
-    //   without incorporating data
-    if (flag == 0) return jnll;
-
 
   // JNLL CONTRIBUTION FROM DATA ---------------------------------------------->
 
@@ -226,24 +221,23 @@ Type objective_function<Type>::operator() () {
     for(int i=0; i < num_obs; i++){
       if(idx_holdout(i) != holdout){
 
-        // Determine random effect component for this observation
-        if(use_Z_sta == 1){
-          ran_effs(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));
-        }
+        // Random effects term
+        ran_effs(i) = Z_sta(idx_loc(i), idx_year(i), idx_age(i)) + nugget(i);
+
+        // Seasonality term
         if(use_Z_fourier == 1){
           for(int lev=1; lev <= harmonics_level; lev++){
-            ran_effs(i) += (
+            seasonality(i) += (
               Z_fourier(idx_fourier(i), 2*lev-2) * sin(lev * (idx_week(i) + 1.0) * year_freq) +
               Z_fourier(idx_fourier(i), 2*lev-1) * cos(lev * (idx_week(i) + 1.0) * year_freq)
             );
           }
         }
-        if(use_nugget == 1){
-          ran_effs(i) += nugget(i);
-        }
 
         // Estimate weekly mortality rate based on log-linear mixed effects model
-        weekly_mort_rate_i(i) = exp(fix_effs(i) + beta_ages(idx_age(i)) + ran_effs(i));
+        weekly_mort_rate_i(i) = exp(
+          beta_ages(idx_age(i)) + fix_effs(i) + ran_effs(i) + seasonality(i)
+        );
 
         // Use the dpois PDF function centered around:
         //  lambda = population * weekly mort rate * (observed days / 7)

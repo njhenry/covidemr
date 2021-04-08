@@ -44,14 +44,14 @@ ap$add_argument(
   help='Grouping fields for seasonality (default one group for all data)'
 )
 args <- ap$parse_args(commandArgs(TRUE))
-args <- list(
-  run_sex = 'female', data_version = '20210113', model_version = '20210402_icar',
-  holdout = 0, use_covs = c(
-    'intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
-    'elevation', 'temperature'
-  ), use_Z_sta = TRUE, use_Z_fourier = FALSE, use_nugget = FALSE, fourier_levels = 2,
-  fourier_groups = c('location_code')
-)
+# args <- list(
+#   run_sex = 'female', data_version = '20210113', model_version = '20210402_icar',
+#   holdout = 0, use_covs = c(
+#     'intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
+#     'elevation', 'temperature'
+#   ), use_Z_sta = TRUE, use_Z_fourier = FALSE, use_nugget = FALSE, fourier_levels = 2,
+#   fourier_groups = c('location_code')
+# )
 message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
 
@@ -109,8 +109,7 @@ data_stack <- list(
   use_Z_sta = as.integer(args$use_Z_sta),
   use_Z_fourier = as.integer(args$use_Z_fourier),
   use_nugget = as.integer(args$use_nugget),
-  harmonics_level = as.integer(args$fourier_levels),
-  flag = 1
+  harmonics_level = as.integer(args$fourier_levels)
 )
 
 
