@@ -44,14 +44,14 @@ ap$add_argument(
   help='Grouping fields for seasonality (default one group for all data)'
 )
 args <- ap$parse_args(commandArgs(TRUE))
-# args <- list(
-#   run_sex = 'female', data_version = '20210113', model_version = '20210402_icar_nug',
-#   holdout = 0, use_covs = c(
-#     'intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
-#     'elevation', 'temperature'
-#   ), use_Z_sta = TRUE, use_Z_fourier = FALSE, use_nugget = TRUE, fourier_levels = 2,
-#   fourier_groups = c('location_code')
-# )
+args <- list(
+  run_sex = 'female', data_version = '20210113', model_version = '20210402_icar',
+  holdout = 0, use_covs = c(
+    'intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
+    'elevation', 'temperature'
+  ), use_Z_sta = TRUE, use_Z_fourier = FALSE, use_nugget = FALSE, fourier_levels = 2,
+  fourier_groups = c('location_code')
+)
 message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
 
@@ -133,9 +133,9 @@ params_list <- list(
   beta_covs = unname(max_a_priori_list$fixed_effects_map),
   beta_ages = unname(max_a_priori_list$fixed_effects_grouping),
   # Rho parameters
-  rho_year_trans = 1.0, rho_age_trans = 1.0,
-  # Random effect variance and mixing parameters
-  log_tau_b = 1.0, logit_phi_b = 0.0,
+  rho_year_trans = 0.0, rho_age_trans = 0.0,
+  # Variance parameters
+  log_tau_sta = 0.0, log_tau_nugget = 0.0,
   # Structured space-time random effect
   Z_sta = array(0.0,
     dim = c(
@@ -159,18 +159,15 @@ tmb_map <- list()
 if(length(params_list$beta_ages) > 1){
   tmb_map$beta_ages <- as.factor(c(NA, 2:length(params_list$beta_ages)))
 }
-if(args$use_Z_sta == FALSE){
+if(!args$use_Z_sta){
   tmb_map$Z_sta <- rep(as.factor(NA), length(params_list$Z_sta))
-  params_list$logit_phi_b <- -10
-  tmb_map$logit_phi_b <- as.factor(NA)
+  tmb_map$log_tau_sta <- as.factor(NA)
 }
-if(args$use_nugget == FALSE){
-  tmb_map$nugget <- rep(as.factor(NA), length(params_list$nugget))
-  params_list$logit_phi_b <- 10
-  tmb_map$logit_phi_b <- as.factor(NA)
-}
-if((args$use_Z_sta == FALSE) & (args$use_nugget == FALSE)) tmb_map$log_tau_b <- as.factor(NA)
 if(!args$use_Z_fourier) tmb_map$Z_fourier <- rep(as.factor(NA), length(params_list$Z_fourier))
+if(!args$use_nugget){
+  tmb_map$nugget <- rep(as.factor(NA), length(params_list$nugget))
+  tmb_map$log_tau_nugget <- as.factor(NA)
+}
 
 # Set random effects
 tmb_random <- character(0)
@@ -191,6 +188,7 @@ model_fit <- covidemr::setup_run_tmb(
   tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
   model_name="ITA deaths model",
   verbose=TRUE, inner_verbose=TRUE,
+  optimization_methods = c('nlminb')
 )
 
 message("Getting sdreport and joint precision matrix...")
