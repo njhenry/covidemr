@@ -131,9 +131,7 @@ Type objective_function<Type>::operator() () {
     // Vectors of fixed and structured random effects for all data points
     vector<Type> fix_effs(num_obs);
     vector<Type> ran_effs(num_obs);
-    vector<Type> seasonality(num_obs);
     ran_effs.setZero();
-    seasonality.setZero();
 
     // Create a vector to hold data-specific estimates of the mortality rate
     //   per person-week
@@ -222,12 +220,12 @@ Type objective_function<Type>::operator() () {
       if(idx_holdout(i) != holdout){
 
         // Random effects term
-        ran_effs(i) = Z_sta(idx_loc(i), idx_year(i), idx_age(i)) + nugget(i);
+        ran_effs(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i)) + nugget(i);
 
         // Seasonality term
         if(use_Z_fourier == 1){
           for(int lev=1; lev <= harmonics_level; lev++){
-            seasonality(i) += (
+            ran_effs(i) += (
               Z_fourier(idx_fourier(i), 2*lev-2) * sin(lev * (idx_week(i) + 1.0) * year_freq) +
               Z_fourier(idx_fourier(i), 2*lev-1) * cos(lev * (idx_week(i) + 1.0) * year_freq)
             );
@@ -235,9 +233,7 @@ Type objective_function<Type>::operator() () {
         }
 
         // Estimate weekly mortality rate based on log-linear mixed effects model
-        weekly_mort_rate_i(i) = exp(
-          beta_ages(idx_age(i)) + fix_effs(i) + ran_effs(i) + seasonality(i)
-        );
+        weekly_mort_rate_i(i) = exp(beta_ages(idx_age(i)) + fix_effs(i) + ran_effs(i));
 
         // Use the dpois PDF function centered around:
         //  lambda = population * weekly mort rate * (observed days / 7)
