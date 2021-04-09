@@ -177,20 +177,20 @@ Type objective_function<Type>::operator() () {
         sd_sta
       )(Z_sta);
 
-      // Soft sum-to-zero constraint on each layer of spatial random effects
-      for(int age_i = 0; age_i < num_ages; age_i++){
-        for(int year_i = 0; year_i < num_years; year_i++){
-          Type sum_res = 0.0;
-          for(int loc_i = 0; loc_i < num_locs; loc_i++){
-            sum_res += Z_sta(loc_i, year_i, age_i);
-          }
-          PARALLEL_REGION jnll -= dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true);
-        }
-      }
+      // // Soft sum-to-zero constraint on each layer of spatial random effects
+      // for(int age_i = 0; age_i < num_ages; age_i++){
+      //   for(int year_i = 0; year_i < num_years; year_i++){
+      //     Type sum_res = 0.0;
+      //     for(int loc_i = 0; loc_i < num_locs; loc_i++){
+      //       sum_res += Z_sta(loc_i, year_i, age_i);
+      //     }
+      //     PARALLEL_REGION jnll -= dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true);
+      //   }
+      // }
 
-      // Adjust normalizing constant to account for rank deficiency of the ICAR precision
-      //  matrix:
-      // // 1) Calculate log(generalized variance) of outer product matrix
+      // // Adjust normalizing constant to account for rank deficiency of the ICAR precision
+      // //  matrix:
+      // // // 1) Calculate log(generalized variance) of outer product matrix
       // Type kronecker_log_genvar = (
       //   log(1 - rho_age * rho_age) * num_locs * num_years +
       //   log(1 - rho_year * rho_year) * num_locs * num_ages
