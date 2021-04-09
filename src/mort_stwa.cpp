@@ -79,7 +79,6 @@ Type objective_function<Type>::operator() () {
 
     DATA_INTEGER(harmonics_level);
 
-    DATA_INTEGER(flag);
 
   // INPUT PARAMETERS --------------------------------------------------------->
 
@@ -173,7 +172,7 @@ Type objective_function<Type>::operator() () {
       // Time effect = AR1 by year
       // Age effect = AR1 by age group
       PARALLEL_REGION jnll += SCALE(
-        SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_icar, false))),
+        SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_icar))),
         sd_sta
       )(Z_sta);
 
@@ -212,9 +211,6 @@ Type objective_function<Type>::operator() () {
     if(use_nugget == 1){
       PARALLEL_REGION jnll -= dnorm(nugget, Type(0.0), sd_nugget, true).sum();
     }
-
-    // Normalization break here
-    if(flag == 0) return jnll;
 
 
   // JNLL CONTRIBUTION FROM DATA ---------------------------------------------->

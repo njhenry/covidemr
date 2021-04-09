@@ -109,8 +109,7 @@ tmb_data_stack <- list(
   use_Z_sta = as.integer(args$use_Z_sta),
   use_Z_fourier = as.integer(args$use_Z_fourier),
   use_nugget = as.integer(args$use_nugget),
-  harmonics_level = as.integer(args$fourier_levels),
-  flag = 1
+  harmonics_level = as.integer(args$fourier_levels)
 )
 
 
@@ -184,7 +183,7 @@ model_fit <- covidemr::setup_run_tmb(
   params_list=params_list,
   tmb_random=tmb_random,
   tmb_map=tmb_map,
-  normalize = TRUE, run_symbolic_analysis = FALSE,
+  normalize = FALSE, run_symbolic_analysis = FALSE,
   tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
   model_name="ITA deaths model",
   verbose=TRUE, inner_verbose=TRUE,
