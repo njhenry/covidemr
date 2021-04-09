@@ -190,12 +190,12 @@ Type objective_function<Type>::operator() () {
       // Adjust normalizing constant to account for rank deficiency of the ICAR precision
       //  matrix:
       // 1) Calculate log(generalized variance) of outer product matrix
-      Type kronecker_log_genvar = (
-        log(1 - rho_age * rho_age) * num_locs * num_years +
-        log(1 - rho_year * rho_year) * num_locs * num_ages
-      );
-      // 2) Adjust normalizing constant
-      PARALLEL_REGION jnll -= Q_rank_deficiency * 0.5 * (kronecker_log_genvar - log(2 * PI));
+      // Type kronecker_log_genvar = (
+      //   log(1 - rho_age * rho_age) * num_locs * num_years +
+      //   log(1 - rho_year * rho_year) * num_locs * num_ages
+      // );
+      // // 2) Adjust normalizing constant
+      // PARALLEL_REGION jnll -= Q_rank_deficiency * 0.5 * (kronecker_log_genvar - log(2 * PI));
     }
 
     if(use_Z_fourier == 1){
