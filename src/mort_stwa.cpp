@@ -79,6 +79,7 @@ Type objective_function<Type>::operator() () {
 
     DATA_INTEGER(harmonics_level);
 
+    DATA_INTEGER(flag);
 
   // INPUT PARAMETERS --------------------------------------------------------->
 
