@@ -161,11 +161,28 @@ Type objective_function<Type>::operator() () {
     }
 
     // Wide gamma priors for tau precision parameters
-    if(use_nugget == 1) PARALLEL_REGION jnll -= dlgamma(tau_nugget, Type(1.0), Type(1000.0), true);
+    if(use_nugget == 1){
+      PARALLEL_REGION jnll -= dlgamma(tau_nugget, Type(1.0), Type(10.0), true);
+
+      // Soft sum-to-zero constraint on nugget effects for each year, location, and age group
+      for(int age_i = 0; age_i < num_ages; age_i++){
+        for(int year_i = 0; year_i < num_years; year_i++){
+          for(int loc_i = 0; loc_i < num_locs; loc_i++){
+            Type sum_nuggets = 0.0;
+            for(int i=0; i < num_obs; i++){
+              if((idx_loc(i)==loc_i) && (idx_age(i)==age_i) && (idx_year(i)==year_i)){
+                sum_nuggets += nugget(i);
+              }
+            }
+            PARALLEL_REGION jnll -= dnorm(sum_nuggets, Type(0.0), Type(0.1), true);
+          }
+        }
+      }
+    }
 
     if(use_Z_sta == 1){
       // Wide gamma priors for tau precision parameters
-      PARALLEL_REGION jnll -= dlgamma(tau_sta, Type(1.0), Type(1000.0), true);
+      PARALLEL_REGION jnll -= dlgamma(tau_sta, Type(1.0), Type(10.0), true);
 
       // Evaluate separable prior against the space-time-age random effects:
       // Spatial effect = ICAR by province
