@@ -18,7 +18,8 @@
 
 
 #include <TMB.hpp>
-#include <math.h>
+using std::isfinite;
+using std::printf;
 
 // HELPER FUNCTIONS ----------------------------------------------------------->
 
@@ -28,6 +29,14 @@ Type rho_transform(Type rho){
   return (exp(rho) - 1) / (exp(rho) + 1);
 }
 
+template<class Type>
+Type check_finite(Type x){
+  if(isfinite(x)){
+    return x;
+  }
+  printf("NAN EVAL ");
+  return 0;
+}
 
 // OBJECTIVE FUNCTION --------------------------------------------------------->
 
@@ -146,18 +155,18 @@ Type objective_function<Type>::operator() () {
     // N(mean=0, sd=3) prior for fixed effects
     // Skip the intercept (index 0)
     for(int j = 1; j < num_covs; j++){
-      jnll -= dnorm(beta_covs(j), Type(0.0), Type(3.0), true);
+      jnll -= check_finite(dnorm(beta_covs(j), Type(0.0), Type(3.0), true));
     }
 
     // N(mean=0, sd=3) prior for age effects
     // Skip the first age group (index 0)
     for(int j = 1; j < beta_ages.size(); j++){
-      jnll -= dnorm(beta_ages(j), Type(0.0), Type(3.0), true);
+      jnll -= check_finite(dnorm(beta_ages(j), Type(0.0), Type(3.0), true));
     }
 
     // Wide gamma priors for tau precision parameters
     if(use_nugget == 1){
-      jnll -= dlgamma(tau_nugget, Type(1.0), Type(10.0), true);
+      jnll -= check_finite(dlgamma(tau_nugget, Type(1.0), Type(10.0), true));
 
       // Soft sum-to-zero constraint on nugget effects for each year, location, and age group
       for(int age_i = 0; age_i < num_ages; age_i++){
@@ -169,7 +178,7 @@ Type objective_function<Type>::operator() () {
                 sum_nuggets += nugget(i);
               }
             }
-            jnll -= dnorm(sum_nuggets, Type(0.0), Type(0.1), true);
+            jnll -= check_finite(dnorm(sum_nuggets, Type(0.0), Type(0.1), true));
           }
         }
       }
@@ -177,16 +186,16 @@ Type objective_function<Type>::operator() () {
 
     if(use_Z_sta == 1){
       // Wide gamma priors for tau precision parameters
-      jnll -= dlgamma(tau_sta, Type(1.0), Type(10.0), true);
+      jnll -= check_finite(dlgamma(tau_sta, Type(1.0), Type(10.0), true));
 
       // Evaluate separable prior against the space-time-age random effects:
       // Spatial effect = ICAR by province
       // Time effect = AR1 by year
       // Age effect = AR1 by age group
-      jnll += SCALE(
+      jnll += check_finite(SCALE(
         SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_icar))),
         sd_sta
-      )(Z_sta);
+      )(Z_sta));
 
       // Soft sum-to-zero constraint on each layer of spatial random effects
       for(int age_i = 0; age_i < num_ages; age_i++){
@@ -195,7 +204,7 @@ Type objective_function<Type>::operator() () {
           for(int loc_i = 0; loc_i < num_locs; loc_i++){
             sum_res += Z_sta(loc_i, year_i, age_i);
           }
-          jnll -= dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true);
+          jnll -= check_finite(dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true));
         }
       }
 
@@ -207,21 +216,21 @@ Type objective_function<Type>::operator() () {
         log(1 - rho_year * rho_year) * num_locs * num_ages
       );
       // 2) Adjust normalizing constant
-      jnll -= Q_rank_deficiency * 0.5 * (kronecker_log_genvar - log(2 * PI));
+      jnll -= check_finite(Q_rank_deficiency * 0.5 * (kronecker_log_genvar - log(2 * PI)));
     }
 
     if(use_Z_fourier == 1){
       for(int i = 0; i < Z_fourier.rows(); i++){
         for(int j = 0; j < Z_fourier.cols(); j++){
           // N(mean=0, sd=3) prior for harmonic terms
-          jnll -= dnorm(Z_fourier(i,j), Type(0.0), Type(3.0), true);
+          jnll -= check_finite(dnorm(Z_fourier(i,j), Type(0.0), Type(3.0), true));
         }
       }
     }
 
     // Evaluation of prior on nugget
     if(use_nugget == 1){
-      jnll -= dnorm(nugget, Type(0.0), sd_nugget, true).sum();
+      jnll -= check_finite(dnorm(nugget, Type(0.0), sd_nugget, true).sum());
     }
 
 
@@ -251,12 +260,15 @@ Type objective_function<Type>::operator() () {
 
         // Estimate weekly mortality rate based on log-linear mixed effects model
         weekly_mort_rate_i(i) = exp(beta_ages(idx_age(i)) + fix_effs(i) + ran_effs(i));
+        if(weekly_mort_rate_i(i) < 0.000001 ){
+          weekly_mort_rate_i(i) = 0.000001;
+        }
 
         // Use the dpois PDF function centered around:
         //  lambda = population * weekly mort rate * (observed days / 7)
-        jnll -= dpois(
+        jnll -= check_finite(dpois(
             y_i(i), n_i(i) * weekly_mort_rate_i(i) * days_exp_i(i) / 7.0, true
-        );
+        ));
       }
     }
 
