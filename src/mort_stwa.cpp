@@ -132,9 +132,7 @@ Type objective_function<Type>::operator() () {
     // Vectors of fixed and structured random effects for all data points
     vector<Type> fix_effs(num_obs);
     vector<Type> ran_effs(num_obs);
-    vector<Type> seasonality(num_obs);
     ran_effs.setZero();
-    seasonality.setZero();
 
     // Create a vector to hold data-specific estimates of the mortality rate
     //   per person-week
@@ -164,10 +162,12 @@ Type objective_function<Type>::operator() () {
     }
 
     // Wide gamma priors for tau precision parameters
-    PARALLEL_REGION jnll -= dnorm(log_tau_sta, Type(0.0), Type(1000.0), true);
-    PARALLEL_REGION jnll -= dnorm(log_tau_nugget, Type(0.0), Type(1000.0), true);
+    if(use_nugget == 1) PARALLEL_REGION jnll -= dlgamma(tau_nugget, Type(1.0), Type(1000.0), true);
 
     if(use_Z_sta == 1){
+      // Wide gamma priors for tau precision parameters
+      PARALLEL_REGION jnll -= dlgamma(tau_sta, Type(1.0), Type(1000.0), true);
+
       // Evaluate separable prior against the space-time-age random effects:
       // Spatial effect = ICAR by province
       // Time effect = AR1 by year
@@ -177,26 +177,26 @@ Type objective_function<Type>::operator() () {
         sd_sta
       )(Z_sta);
 
-      // // Soft sum-to-zero constraint on each layer of spatial random effects
-      // for(int age_i = 0; age_i < num_ages; age_i++){
-      //   for(int year_i = 0; year_i < num_years; year_i++){
-      //     Type sum_res = 0.0;
-      //     for(int loc_i = 0; loc_i < num_locs; loc_i++){
-      //       sum_res += Z_sta(loc_i, year_i, age_i);
-      //     }
-      //     PARALLEL_REGION jnll -= dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true);
-      //   }
-      // }
+      // Soft sum-to-zero constraint on each layer of spatial random effects
+      for(int age_i = 0; age_i < num_ages; age_i++){
+        for(int year_i = 0; year_i < num_years; year_i++){
+          Type sum_res = 0.0;
+          for(int loc_i = 0; loc_i < num_locs; loc_i++){
+            sum_res += Z_sta(loc_i, year_i, age_i);
+          }
+          PARALLEL_REGION jnll -= dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true);
+        }
+      }
 
-      // // Adjust normalizing constant to account for rank deficiency of the ICAR precision
-      // //  matrix:
-      // // // 1) Calculate log(generalized variance) of outer product matrix
-      // Type kronecker_log_genvar = (
-      //   log(1 - rho_age * rho_age) * num_locs * num_years +
-      //   log(1 - rho_year * rho_year) * num_locs * num_ages
-      // );
-      // // 2) Adjust normalizing constant
-      // PARALLEL_REGION jnll -= Q_rank_deficiency * 0.5 * (kronecker_log_genvar - log(2 * PI));
+      // Adjust normalizing constant to account for rank deficiency of the ICAR precision
+      //  matrix:
+      // 1) Calculate log(generalized variance) of outer product matrix
+      Type kronecker_log_genvar = (
+        log(1 - rho_age * rho_age) * num_locs * num_years +
+        log(1 - rho_year * rho_year) * num_locs * num_ages
+      );
+      // 2) Adjust normalizing constant
+      PARALLEL_REGION jnll -= Q_rank_deficiency * 0.5 * (kronecker_log_genvar - log(2 * PI));
     }
 
     if(use_Z_fourier == 1){
@@ -225,13 +225,16 @@ Type objective_function<Type>::operator() () {
     for(int i=0; i < num_obs; i++){
       if(idx_holdout(i) != holdout){
 
-        // Random effects term
-        ran_effs(i) = Z_sta(idx_loc(i), idx_year(i), idx_age(i)) + nugget(i);
-
-        // Seasonality term
+        // Random effects and seasonality terms
+        if(use_Z_sta == 1){
+          ran_effs(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));
+        }
+        if(use_nugget == 1){
+          ran_effs(i) += nugget(i);
+        }
         if(use_Z_fourier == 1){
           for(int lev=1; lev <= harmonics_level; lev++){
-            seasonality(i) += (
+            ran_effs(i) += (
               Z_fourier(idx_fourier(i), 2*lev-2) * sin(lev * (idx_week(i) + 1.0) * year_freq) +
               Z_fourier(idx_fourier(i), 2*lev-1) * cos(lev * (idx_week(i) + 1.0) * year_freq)
             );
@@ -239,9 +242,7 @@ Type objective_function<Type>::operator() () {
         }
 
         // Estimate weekly mortality rate based on log-linear mixed effects model
-        weekly_mort_rate_i(i) = exp(
-          beta_ages(idx_age(i)) + fix_effs(i) + ran_effs(i) + seasonality(i)
-        );
+        weekly_mort_rate_i(i) = exp(beta_ages(idx_age(i)) + fix_effs(i) + ran_effs(i));
 
         // Use the dpois PDF function centered around:
         //  lambda = population * weekly mort rate * (observed days / 7)
