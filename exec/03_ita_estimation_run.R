@@ -45,11 +45,11 @@ ap$add_argument(
 )
 args <- ap$parse_args(commandArgs(TRUE))
 # args <- list(
-#   run_sex = 'female', data_version = '20210113', model_version = '20210402_icar_nugget',
+#   run_sex = 'female', data_version = '20210113', model_version = '20210402_icar',
 #   holdout = 0, use_covs = c(
 #     'intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
 #     'elevation', 'temperature'
-#   ), use_Z_sta = TRUE, use_Z_fourier = FALSE, use_nugget = TRUE, fourier_levels = 2,
+#   ), use_Z_sta = TRUE, use_Z_fourier = FALSE, use_nugget = FALSE, fourier_levels = 2,
 #   fourier_groups = c('location_code')
 # )
 message(str(args))
@@ -92,7 +92,7 @@ Q_rank_deficiency = nrow(Q_icar) - as.integer(Matrix::rankMatrix(Q_icar))
 ## Define input data stack (the data used to fit the model) --------------------
 
 # Define data stack
-data_stack <- list(
+tmb_data_stack <- list(
   holdout = args$holdout,
   y_i = in_data_final$deaths,
   n_i = in_data_final$pop,
@@ -109,7 +109,8 @@ data_stack <- list(
   use_Z_sta = as.integer(args$use_Z_sta),
   use_Z_fourier = as.integer(args$use_Z_fourier),
   use_nugget = as.integer(args$use_nugget),
-  harmonics_level = as.integer(args$fourier_levels)
+  harmonics_level = as.integer(args$fourier_levels),
+  flag = 1
 )
 
 
@@ -150,7 +151,7 @@ params_list <- list(
     )
   ),
   # Unstructured random effect
-  nugget = rep(0.0, length(data_stack$n_i))
+  nugget = rep(0.0, length(tmb_data_stack$n_i))
 )
 
 # Fix particular parameter values using the TMB map
@@ -179,15 +180,15 @@ if(args$use_Z_fourier) tmb_random <- c(tmb_random, 'Z_fourier')
 
 tictoc::tic("Full TMB model fitting")
 model_fit <- covidemr::setup_run_tmb(
-  tmb_data_stack=data_stack,
+  tmb_data_stack=tmb_data_stack,
   params_list=params_list,
   tmb_random=tmb_random,
   tmb_map=tmb_map,
-  normalize = FALSE, run_symbolic_analysis = FALSE,
+  normalize = TRUE, run_symbolic_analysis = FALSE,
   tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
   model_name="ITA deaths model",
   verbose=TRUE, inner_verbose=TRUE,
-  optimization_methods = c('L-BFGS-B','nlminb')
+  optimization_methods = c('nlminb','L-BFGS-B','nmkb','Rvmmin')
 )
 
 message("Getting sdreport and joint precision matrix...")

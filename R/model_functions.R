@@ -297,13 +297,13 @@ setup_run_tmb <- function(
     vbmsg("Constructing ADFunction...")
     tictoc::tic("  Making Model ADFun")
     obj <- TMB::MakeADFun(
-      data=tmb_data_stack,
-      parameters=params_list,
-      random=tmb_random,
-      method='nlminb',
-      map=tmb_map,
-      DLL='covidemr',
-      silent=inner_verbose
+      data = tmb_data_stack,
+      parameters = params_list,
+      random = tmb_random,
+      method = 'nlminb',
+      map = tmb_map,
+      DLL = 'covidemr',
+      silent = inner_verbose
     )
     obj$env$tracemgc <- as.integer(verbose)
     obj$env$inner.control$trace <- as.integer(inner_verbose)
@@ -327,12 +327,13 @@ setup_run_tmb <- function(
     tictoc::tic("  Optimization")
     message(glue("\n** OPTIMIZING USING METHOD {this_method} **"))
     opt <- optimx(
-      par = obj$par, fn = function(x) as.numeric(obj$fn(x)), gr = obj$gr,
+      par = obj$par, fn = obj$fn, gr = obj$gr,
       lower = fe_lower_vec, upper = fe_upper_vec,
       method = this_method,
       itnmax = tmb_outer_maxsteps,
       hessian = TRUE, kkt = TRUE,
       control = list(
+        rel.tol = 1E-10,
         trace = as.integer(verbose),
         dowarn = as.integer(verbose),
         maxit = tmb_inner_maxsteps,
