@@ -19,11 +19,6 @@
 
 #include <TMB.hpp>
 #include <math.h>
-#include <Eigen/Sparse>
-#include <vector>
-#include <stdio.h>
-using namespace density;
-using Eigen::SparseMatrix;
 
 // HELPER FUNCTIONS ----------------------------------------------------------->
 
