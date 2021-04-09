@@ -300,7 +300,7 @@ setup_run_tmb <- function(
       data = tmb_data_stack,
       parameters = params_list,
       random = tmb_random,
-      method = 'nlminb',
+      random.start = expression(rnorm(length(random), sd=1E-4)),
       map = tmb_map,
       DLL = 'covidemr',
       silent = inner_verbose
