@@ -18,8 +18,7 @@
 
 
 #include <TMB.hpp>
-using std::isfinite;
-using std::printf;
+
 
 // HELPER FUNCTIONS ----------------------------------------------------------->
 
@@ -29,23 +28,11 @@ Type rho_transform(Type rho){
   return (exp(rho) - 1) / (exp(rho) + 1);
 }
 
-template<class Type>
-Type check_finite(Type x){
-  if(isfinite(x)){
-    return x;
-  }
-  printf("NAN EVAL ");
-  return 0;
-}
 
 // OBJECTIVE FUNCTION --------------------------------------------------------->
 
 template<class Type>
 Type objective_function<Type>::operator() () {
-
-  using namespace R_inla;
-  using namespace density;
-  using namespace Eigen;
 
   // INPUT DATA --------------------------------------------------------------->
 
@@ -120,6 +107,7 @@ Type objective_function<Type>::operator() () {
     int num_locs = Z_sta.dim(0);
     int num_years = Z_sta.dim(1);
     int num_ages = Z_sta.dim(2);
+    int num_fourier_groups = Z_fourier.rows();
 
     // Transform some of our parameters
     // - Convert rho from (-Inf, Inf) to (-1, 1)
@@ -155,82 +143,76 @@ Type objective_function<Type>::operator() () {
     // N(mean=0, sd=3) prior for fixed effects
     // Skip the intercept (index 0)
     for(int j = 1; j < num_covs; j++){
-      jnll -= check_finite(dnorm(beta_covs(j), Type(0.0), Type(3.0), true));
+      jnll -= dnorm(beta_covs(j), Type(0.0), Type(3.0), true);
     }
 
     // N(mean=0, sd=3) prior for age effects
     // Skip the first age group (index 0)
     for(int j = 1; j < beta_ages.size(); j++){
-      jnll -= check_finite(dnorm(beta_ages(j), Type(0.0), Type(3.0), true));
-    }
-
-    // Wide gamma priors for tau precision parameters
-    if(use_nugget == 1){
-      jnll -= check_finite(dlgamma(tau_nugget, Type(1.0), Type(10.0), true));
-
-      // Soft sum-to-zero constraint on nugget effects for each year, location, and age group
-      for(int age_i = 0; age_i < num_ages; age_i++){
-        for(int year_i = 0; year_i < num_years; year_i++){
-          for(int loc_i = 0; loc_i < num_locs; loc_i++){
-            Type sum_nuggets = 0.0;
-            for(int i=0; i < num_obs; i++){
-              if((idx_loc(i)==loc_i) && (idx_age(i)==age_i) && (idx_year(i)==year_i)){
-                sum_nuggets += nugget(i);
-              }
-            }
-            jnll -= check_finite(dnorm(sum_nuggets, Type(0.0), Type(0.1), true));
-          }
-        }
-      }
+      jnll -= dnorm(beta_ages(j), Type(0.0), Type(3.0), true);
     }
 
     if(use_Z_sta == 1){
       // Wide gamma priors for tau precision parameters
-      jnll -= check_finite(dlgamma(tau_sta, Type(1.0), Type(10.0), true));
-
+      jnll -= dlgamma(tau_sta, Type(1.0), Type(10.0), true);
       // Evaluate separable prior against the space-time-age random effects:
       // Spatial effect = ICAR by province
       // Time effect = AR1 by year
       // Age effect = AR1 by age group
-      jnll += check_finite(SCALE(
-        SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_icar))),
-        sd_sta
-      )(Z_sta));
-
+      jnll += density::SCALE(
+        density::SEPARABLE(
+          density::AR1(rho_age),
+          density::SEPARABLE(density::AR1(rho_year), density::GMRF(Q_icar))
+        ), sd_sta
+      )(Z_sta);
       // Soft sum-to-zero constraint on each layer of spatial random effects
+      vector<Type> sum_res(num_ages * num_years);
+      sum_res.setZero();
       for(int age_i = 0; age_i < num_ages; age_i++){
         for(int year_i = 0; year_i < num_years; year_i++){
-          Type sum_res = 0.0;
           for(int loc_i = 0; loc_i < num_locs; loc_i++){
-            sum_res += Z_sta(loc_i, year_i, age_i);
+            sum_res(age_i * year_i + age_i) += Z_sta(loc_i, year_i, age_i);
           }
-          jnll -= check_finite(dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true));
         }
       }
-
+      jnll -= dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true).sum();
       // Adjust normalizing constant to account for rank deficiency of the ICAR precision
       //  matrix:
-      // 1) Calculate log(generalized variance) of outer product matrix
+      //  - 1) Calculate log(generalized variance) of outer product matrix
       Type kronecker_log_genvar = (
         log(1 - rho_age * rho_age) * num_locs * num_years +
         log(1 - rho_year * rho_year) * num_locs * num_ages
       );
-      // 2) Adjust normalizing constant
-      jnll -= check_finite(Q_rank_deficiency * 0.5 * (kronecker_log_genvar - log(2 * PI)));
+      //  - 2) Adjust normalizing constant
+      jnll -= Q_rank_deficiency * 0.5 * (kronecker_log_genvar - log(2 * PI));
+    }
+
+    if(use_nugget == 1){
+      // Wide gamma priors for tau precision parameters
+      jnll -= dlgamma(tau_nugget, Type(1.0), Type(10.0), true);
+      // Soft sum-to-zero constraint on nugget effects for each fourier grouping
+      vector<Type> nugget_sums(num_fourier_groups);
+      vector<Type> nugget_counts(num_fourier_groups);
+      nugget_sums.setZero();
+      nugget_counts.setZero();
+      for(int i = 0; i < num_obs; i++){
+        nugget_sums(idx_fourier(i)) += nugget(i);
+        nugget_counts(idx_fourier(i)) += Type(1.0);
+      }
+      for(int f_i = 0; f_i < num_fourier_groups; f_i++){
+        jnll -= dnorm(nugget_sums(f_i), Type(0.0), Type(0.001)*nugget_counts(f_i), true);
+      }
+      // Evaluate prior on each nugget
+      jnll -= dnorm(nugget, Type(0.0), sd_nugget, true).sum();
     }
 
     if(use_Z_fourier == 1){
-      for(int i = 0; i < Z_fourier.rows(); i++){
+      // N(mean=0, sd=3) prior for harmonic terms
+      for(int i = 0; i < num_fourier_groups; i++){
         for(int j = 0; j < Z_fourier.cols(); j++){
-          // N(mean=0, sd=3) prior for harmonic terms
-          jnll -= check_finite(dnorm(Z_fourier(i,j), Type(0.0), Type(3.0), true));
+          jnll -= dnorm(Z_fourier(i,j), Type(0.0), Type(3.0), true);
         }
       }
-    }
-
-    // Evaluation of prior on nugget
-    if(use_nugget == 1){
-      jnll -= check_finite(dnorm(nugget, Type(0.0), sd_nugget, true).sum());
     }
 
 
@@ -241,7 +223,6 @@ Type objective_function<Type>::operator() () {
 
     for(int i=0; i < num_obs; i++){
       if(idx_holdout(i) != holdout){
-
         // Random effects and seasonality terms
         if(use_Z_sta == 1){
           ran_effs(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));
@@ -257,18 +238,11 @@ Type objective_function<Type>::operator() () {
             );
           }
         }
-
         // Estimate weekly mortality rate based on log-linear mixed effects model
         weekly_mort_rate_i(i) = exp(beta_ages(idx_age(i)) + fix_effs(i) + ran_effs(i));
-        if(weekly_mort_rate_i(i) < 0.000001 ){
-          weekly_mort_rate_i(i) = 0.000001;
-        }
-
         // Use the dpois PDF function centered around:
         //  lambda = population * weekly mort rate * (observed days / 7)
-        jnll -= check_finite(dpois(
-            y_i(i), n_i(i) * weekly_mort_rate_i(i) * days_exp_i(i) / 7.0, true
-        ));
+        jnll -= dpois(y_i(i), n_i(i) * weekly_mort_rate_i(i) * days_exp_i(i) / 7.0, true);
       }
     }
 
