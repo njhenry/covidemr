@@ -1,53 +1,4 @@
 
-#' Generate an ICAR precision matrix based on an adjacency matrix
-#'
-#' @description Generate a precision matrix for the intrinsic correlated autoregressive
-#'  (ICAR) model specification, a special case of the correlated autoregressive (CAR)
-#'  class of Markov random field models. This precision matrix is usually denoted as "Q".
-#'
-#' @details The precision matrix is fully specified by the adjacency weights, matrix W,
-#'   defined as W = {w_ij} where w_ij is 1 if i and j are neighbors, and 0 otherwise. The
-#'   precision matrix Q is defined as Q = D_w - W, where D_w is a diagonal matrix with
-#'   each diagonal term d_ii equal to the sum of row i in W.
-#'
-#'   Note that the ICAR model is improper, in that the conditional distributions
-#'   specified by the precision matrix do not determine a full joint distribution that
-#'   integrates to 1; in other words, the precision matrix Q is not invertible. The ICAR
-#'   precision matrix can still be used as a prior in a hierarchical model.
-#'
-#'   This function includes optional argument `scale_variance`. If set to `TRUE` (the
-#'   default), the function will rescale the precision matrix to have a generalized
-#'   variance of 1, which may aid in prior specifications that are comparable across
-#'   areal spatial models with different geometries.
-#'
-#'   For more details, see:
-#'   Banerjee, Carlin, and Gelfand (2015). Hierarchical Modeling and Analysis for Spatial
-#'     Data, 2nd Edition. Section 6.4.3.3: CAR models and their difficulties.
-#'   Riebler et al. (2016). An intuitive Bayesian sptial model for disease mapping that
-#'     accounts for scaling. Statistical methods in medical research, 25(4):1145-65.
-#'
-#' @param W Adjacency matrix, with w_ij = w_ji = 1 if areal units i and j are neighbors,
-#'   and zero otherwise. See function details for more information
-#' @param scale_variance [default TRUE] Should the precision matrix be rescaled so that
-#'  the generalized variance is equal to 1? Setting to TRUE may help with prior
-#'  specification.
-#'
-#' @return Sparse ICAR precision matrix Q. See function details for more information.
-#'
-#' @import Matrix INLA
-#' @export
-icar_precision_from_adjacency <- function(W, scale_variance = TRUE){
-  # Generate and return sparse precision matrix
-  Q <- Matrix::Diagonal(n = nrow(W), x = Matrix::rowSums(W)) - W
-  if(scale_variance){
-    # Scale model to have generalized variance of 1
-    constraint_matrix <- matrix(1, nrow = 1, ncol = ncol(Q))
-    Q <- INLA::inla.scale.model(Q, constr = list(A = constraint_matrix, e = 0))
-  }
-  return(Q)
-}
-
-
 #' Assign seasonality grouping IDs
 #'
 #' @description Create a vector that assigns a (zero-indexed) seasonality
@@ -186,8 +137,10 @@ find_glm_map_parameter_estimates <- function(
 #' @description Get the TMB normalization constant from random effects
 #'
 #' @param adfun The ADFunction to normalize
-#' @param flag [char] flag to indicate when random effects only have been
+#' @param flag [char] Flagging variable to indicate whether random effects only have been
 #'   incorporated into the joint negative log-likelihood
+#' @param value [char] Value that the flagging variable takes when the data should NOT
+#'   be incorporated into the jnll
 #' @param verbose [bool, default FALSE] return a message about normalization?
 #'
 #' @return Normalized ADFunction
@@ -198,7 +151,7 @@ find_glm_map_parameter_estimates <- function(
 normalize_adfun <- function(adfun, flag, verbose=FALSE){
   if(verbose) message(" - Running normalization")
   if(verbose) tictoc::tic("    Normalization")
-  normalized <- TMB::normalize(adfun, flag=flag)
+  normalized <- TMB::normalize(adfun, flag=flag, value=value)
   if(verbose) tictoc::toc()
   return(normalized)
 }
@@ -239,11 +192,10 @@ run_sparsity_algorithm <- function(adfun, verbose=FALSE){
 #' @param tmb_outer_maxsteps Max number of steps taken by the outer optimizer
 #' @param tmb_inner_maxsteps Max number of steps taken by the inner optimizer
 #'   in a single outer optimizer step
+#' @param normalize [boolean, default FALSE] Run TMB's automatic process normalization
+#'   function? For more details, see \link{\code{TMB::normalize}}.
 #' @param run_symbolic_analysis [boolean, default FALSE] run symbolic analysis
 #'   to speed up model run time?
-#' @param normalize [boolean, default FALSE] Run normalize fix for models with
-#'   large random effects sets? Only run this option if you know what you are
-#'   doing and have explicitly coded this fix into the TMB code.
 #' @param set_limits [boolean, default FALSE] Set limits for fixed effects?
 #' @param limit_max [numeric, default 10] If limits are set in the model,
 #'   maximum value for any fixed effect
@@ -265,7 +217,7 @@ run_sparsity_algorithm <- function(adfun, verbose=FALSE){
 #' @export
 setup_run_tmb <- function(
   tmb_data_stack, params_list, tmb_random, tmb_map, DLL, tmb_outer_maxsteps,
-  tmb_inner_maxsteps, run_symbolic_analysis=FALSE, normalize=FALSE,
+  tmb_inner_maxsteps, normalize=FALSE, run_symbolic_analysis=FALSE,
   set_limits=FALSE, limit_max=10, limit_min=-limit_max,
   optimization_methods = c('nlminb','L-BFGS-B','Rcgmin','spg','bobyqa','CG','Nelder-Mead'),
   model_name="model", verbose=FALSE, inner_verbose=FALSE
@@ -288,8 +240,10 @@ setup_run_tmb <- function(
     openmp(2)
   }
 
-  # Add a flag to the data input stack if normalize is specified
-  if(normalize) tmb_data_stack$flag <- 1
+  # Add flags to the data input stack indicating whether automatic process normalization
+  #  should be run
+  tmb_data_stack$auto_normalize <- as.integer(normalize)
+  tmb_data_stack$early_return <- as.integer(FALSE)
 
   # Try optimizing using a variety of algorithms (all fit in optimx)
   for(this_method in optimization_methods){
@@ -300,7 +254,6 @@ setup_run_tmb <- function(
       data = tmb_data_stack,
       parameters = params_list,
       random = tmb_random,
-      random.start = expression(rnorm(length(random), sd=1E-4)),
       map = tmb_map,
       DLL = 'covidemr',
       silent = inner_verbose
@@ -309,7 +262,9 @@ setup_run_tmb <- function(
     obj$env$inner.control$trace <- as.integer(inner_verbose)
     tictoc::toc()
     # Optionally run a normalization fix for models with large random effect sets
-    if(normalize) obj <- normalize_adfun(adfun=obj, flag='flag', verbose=verbose)
+    if(normalize) obj <- normalize_adfun(
+      adfun=obj, flag='early_return', value=1, verbose=verbose
+    )
     # Optionally run optimization algorithms to improve model run time
     if(run_symbolic_analysis) run_sparsity_algorithm(adfun=obj, verbose=verbose)
     # Optionally set upper and lower limits for fixed effects
@@ -333,7 +288,6 @@ setup_run_tmb <- function(
       itnmax = tmb_outer_maxsteps,
       hessian = TRUE, kkt = TRUE,
       control = list(
-        rel.tol = 1E-10,
         trace = as.integer(verbose),
         dowarn = as.integer(verbose),
         maxit = tmb_inner_maxsteps,

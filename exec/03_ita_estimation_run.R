@@ -1,10 +1,10 @@
-## -----------------------------------------------------------------------------
+## ---------------------------------------------------------------------------------------
 ##
 ## 03: Space-time excess mortality modeling code, using prepared data as input
 ##
 ## For more details, see README at https://github.com/njhenry/covidemr/
 ##
-## -----------------------------------------------------------------------------
+## ---------------------------------------------------------------------------------------
 
 library(argparse)
 library(data.table)
@@ -29,16 +29,11 @@ ap$add_argument('--run-sex', type='character', help='Sex-specific model to run')
 ap$add_argument('--data-version', type='character', help='Prepped data version date')
 ap$add_argument('--model-version', type='character', help='Model run version date')
 ap$add_argument('--holdout', type='integer', default=0, help='Holdout number')
-ap$add_argument(
-  '--use-covs', type='character', nargs='+', help='Covariates to use (include intercept)'
-)
+ap$add_argument('--use-covs', type='character', nargs='+', help='Covariates to use, including intercept')
 ap$add_argument('--use-Z-sta', help='Use space-time-age RE?', action='store_true')
 ap$add_argument('--use-Z-fourier', help='Use periodic-fit RE?', action='store_true')
 ap$add_argument('--use-nugget', help='Add a nugget?', action='store_true')
-ap$add_argument(
-  '--fourier-levels', help='Number of levels for Fourier analysis',
-  type='integer', default=2
-)
+ap$add_argument('--fourier-levels', help='# levels for seasonality fit', type='integer', default=2)
 ap$add_argument(
   '--fourier-groups', type='character', nargs='*', default=NULL,
   help='Grouping fields for seasonality (default one group for all data)'
@@ -49,14 +44,14 @@ args <- ap$parse_args(commandArgs(TRUE))
 #   holdout = 0, use_covs = c(
 #     'intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
 #     'elevation', 'temperature'
-#   ), use_Z_sta = TRUE, use_Z_fourier = FALSE, use_nugget = FALSE, fourier_levels = 2,
+#   ), use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = TRUE, fourier_levels = 2,
 #   fourier_groups = c('location_code')
 # )
 message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
 
 
-## Load and prepare data -------------------------------------------------------
+## Load and prepare data ---------------------------------------------------------------->
 
 # Helper functions for loading prepared data
 prep_dir <- file.path(config$paths$prepped_data, args$data_version)
@@ -82,14 +77,8 @@ prepped_data$idx_fourier <- assign_seasonality_ids(
 # Subset to only input data for this model
 in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baseline==1), ]
 
-# Define a scaled ICAR precision matrix based on spatial adjacency
-Q_icar = covidemr::icar_precision_from_adjacency(adjmat, scale_variance = TRUE)
-# Calculate the rank deficiency of the adjusted ICAR matrix, needed to calculate the
-#  normalizing constant for the JNLL
-Q_rank_deficiency = nrow(Q_icar) - as.integer(Matrix::rankMatrix(Q_icar))
 
-
-## Define input data stack (the data used to fit the model) --------------------
+## Define input data stack (the data used to fit the model) ----------------------------->
 
 # Define data stack
 tmb_data_stack <- list(
@@ -104,8 +93,7 @@ tmb_data_stack <- list(
   idx_age = in_data_final$idx_age,
   idx_fourier = in_data_final$idx_fourier,
   idx_holdout = in_data_final$idx_holdout,
-  Q_icar = Q_icar,
-  Q_rank_deficiency = Q_rank_deficiency,
+  adjacency_matrix = adjmat,
   use_Z_sta = as.integer(args$use_Z_sta),
   use_Z_fourier = as.integer(args$use_Z_fourier),
   use_nugget = as.integer(args$use_nugget),
@@ -113,7 +101,7 @@ tmb_data_stack <- list(
 )
 
 
-## Define parameters (what is fit in the model) and their constraints ----------
+## Define parameters (what is fit in the model) and their constraints ------------------->
 
 # Find MAP approximation of all model fixed effects. This will be used to set
 #  the starting values for the model
@@ -175,7 +163,7 @@ if(args$use_Z_sta) tmb_random <- c(tmb_random, 'Z_sta')
 if(args$use_Z_fourier) tmb_random <- c(tmb_random, 'Z_fourier')
 
 
-## Run modeling ----------------------------------------------------------------
+## Run modeling ------------------------------------------------------------------------->
 
 tictoc::tic("Full TMB model fitting")
 model_fit <- covidemr::setup_run_tmb(
@@ -183,7 +171,7 @@ model_fit <- covidemr::setup_run_tmb(
   params_list=params_list,
   tmb_random=tmb_random,
   tmb_map=tmb_map,
-  normalize = FALSE, run_symbolic_analysis = FALSE,
+  normalize = TRUE, run_symbolic_analysis = FALSE,
   tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
   model_name="ITA deaths model",
   verbose=TRUE, inner_verbose=TRUE,
@@ -195,7 +183,7 @@ sdrep <- sdreport(model_fit$obj, bias.correct = TRUE, getJointPrecision = TRUE)
 tictoc::toc()
 
 
-## Create post-estimation predictive objects -----------------------------------
+## Create post-estimation predictive objects -------------------------------------------->
 
 tictoc::tic("Full model postestimation")
 # Optionally set a random seed
@@ -240,7 +228,7 @@ if(args$holdout != 0){
 tictoc::toc()
 
 
-## Save outputs ----------------------------------------------------------------
+## Save outputs ------------------------------------------------------------------------->
 
 out_file_stub <- sprintf("%s_holdout%i", args$run_sex, args$holdout)
 out_dir <- file.path(config$paths$model_results, args$model_version)

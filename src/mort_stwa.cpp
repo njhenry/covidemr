@@ -1,4 +1,4 @@
-// ///////////////////////////////////////////////////////////////////////////// //
+// ///////////////////////////////////////////////////////////////////////////////////////
 //
 // TMB OPTIMIZATION MODEL FOR ITALY MORTALITY MODEL
 //
@@ -14,13 +14,14 @@
 // logit(p_i) = \sum_{k=1}^{4}\alpha_i * \mathbb{I}[age_i = k] + \vec{\beta} X +
 //   Z_{prov_i, year_i, age_i} + f_{prov_i, age_i}(week_i) + \epsilon_i
 //
-// /////////////////////////////////////////////////////////////////////////////
+// ///////////////////////////////////////////////////////////////////////////////////////
 
 
 #include <TMB.hpp>
+using Eigen::SparseMatrix;
 
 
-// HELPER FUNCTIONS ----------------------------------------------------------->
+// HELPER FUNCTIONS --------------------------------------------------------------------->
 
 // Transformation from (-Inf, Inf) to (-1, 1) for all rho parameters
 template<class Type>
@@ -28,13 +29,34 @@ Type rho_transform(Type rho){
   return (exp(rho) - 1) / (exp(rho) + 1);
 }
 
+// Function for preparing a CAR precision matrix (Q) based on an adjacency matrix
+//  and a neighborhood autocorrelation parameter.
+//
+//  param W: Sparse adjacency matrix W = {w_ij}, where w_ij = w_ji = 1 if areal units i
+//    and j are neighbors and 0 otherwise.
+//  param rho: Neighborhood autocorrelation parameter in [-1, 1]
+//
+//  For more information, see:
+//  Banerjee, Carlin, and Gelfand (2015). Hierarchical Modeling and Analysis for Spatial
+//    Data, 2nd Edition. Section 4.3: Conditionally autoregressive models
+//
+template<class Type>
+SparseMatrix<Type> car_precision_from_graph(SparseMatrix<Type> W, Type rho){
+  SparseMatrix<Type> D(W.rows(), W.cols());
+  for(int ii=0; ii < D.rows(); ii++){
+    D.insert(ii, ii) = W.row(ii).sum();
+  }
+  SparseMatrix<Type> Q = (D - rho * W);
+  return Q;
+}
 
-// OBJECTIVE FUNCTION --------------------------------------------------------->
+
+// OBJECTIVE FUNCTION ------------------------------------------------------------------->
 
 template<class Type>
 Type objective_function<Type>::operator() () {
 
-  // INPUT DATA --------------------------------------------------------------->
+  // INPUT DATA ------------------------------------------------------------------------->
 
     // OPTION: Holdout number
     // Any observation where `idx_holdout` is equal to `holdout` will be
@@ -47,7 +69,7 @@ Type objective_function<Type>::operator() () {
     DATA_VECTOR(n_i); // Population size for the corresponding group
     DATA_VECTOR(days_exp_i); // Days of exposure in a given week of observations
 
-    // Covariate matrix: dimensions (n observations) * (m covariates including intercept)
+    // Covariate matrix: dimensions (n observations) by (m covariates including intercept)
     DATA_MATRIX(X_ij);
 
     // Indices
@@ -58,20 +80,24 @@ Type objective_function<Type>::operator() () {
     DATA_IVECTOR(idx_fourier); // Index for the Fourier transform group
     DATA_IVECTOR(idx_holdout); // Holdout index for each observation
 
-    // Precision matrix for ICAR priors
-    DATA_SPARSE_MATRIX(Q_icar);
-    // Rank deficiency of precision matrix
-    DATA_SCALAR(Q_rank_deficiency);
+    // Adjacency matrix capturing province neighborhood structure
+    DATA_SPARSE_MATRIX(adjacency_matrix);
 
     // Which of the correlated random effects structures should be used?
     DATA_INTEGER(use_Z_sta);
     DATA_INTEGER(use_Z_fourier);
     DATA_INTEGER(use_nugget);
 
+    // Number of harmonic terms used to fit seasonality
     DATA_INTEGER(harmonics_level);
 
+    // Is random effects automatic process normalization being used? If so, should only
+    //  priors be returned?
+    DATA_INTEGER(auto_normalize);
+    DATA_INTEGER(early_return);
 
-  // INPUT PARAMETERS --------------------------------------------------------->
+
+  // INPUT PARAMETERS ------------------------------------------------------------------->
 
     // Fixed effects
     PARAMETER_VECTOR(beta_covs); // Vector of fixed effects on covariates
@@ -80,6 +106,7 @@ Type objective_function<Type>::operator() () {
     // Random effect autocorrelation parameters, transformed scale
     PARAMETER(rho_year_trans); // By year
     PARAMETER(rho_age_trans);  // By age group
+    PARAMETER(rho_loc_trans);  // Neighborhood correlation by province
 
     // Log precision of space-time-age-year random effect
     PARAMETER(log_tau_sta);
@@ -99,26 +126,27 @@ Type objective_function<Type>::operator() () {
     PARAMETER_VECTOR(nugget);
 
 
-  // TRANSFORM DATA AND PARAMETER OBJECTS ------------------------------------->
+  // TRANSFORM DATA AND PARAMETER OBJECTS ----------------------------------------------->
 
     // Basic indices
     int num_obs = y_i.size();
     int num_covs = beta_covs.size();
-    int num_locs = Z_sta.dim(0);
-    int num_years = Z_sta.dim(1);
-    int num_ages = Z_sta.dim(2);
     int num_fourier_groups = Z_fourier.rows();
 
     // Transform some of our parameters
     // - Convert rho from (-Inf, Inf) to (-1, 1)
     Type rho_year = rho_transform(rho_year_trans);
     Type rho_age = rho_transform(rho_age_trans);
+    Type rho_loc = rho_transform(rho_loc_trans);
 
     // Convert from log-tau (-Inf, Inf) to tau (must be positive)
     Type tau_sta = exp(log_tau_sta);
     Type sd_sta = exp(log_tau_sta * Type(-0.5));
     Type tau_nugget = exp(log_tau_nugget);
     Type sd_nugget = exp(log_tau_nugget * Type(-0.5));
+
+    // Construct CAR precision matrix
+    SparseMatrix<Type> Q_car = car_precision_from_graph(adjacency_matrix, rho_loc);
 
     // Vectors of fixed and structured random effects for all data points
     vector<Type> fix_effs(num_obs);
@@ -133,12 +161,12 @@ Type objective_function<Type>::operator() () {
     Type year_freq = 2.0 * 3.1415926535 / 52.0;
 
 
-  // Instantiate joint negative log-likelihood -------------------------------->
+  // Instantiate joint negative log-likelihood (JNLL) ----------------------------------->
 
     Type jnll = 0.0;
 
 
-  // JNLL CONTRIBUTION FROM PRIORS -------------------------------------------->
+  // JNLL CONTRIBUTION FROM PRIORS ------------------------------------------------------>
 
     // N(mean=0, sd=3) prior for fixed effects
     // Skip the intercept (index 0)
@@ -152,61 +180,32 @@ Type objective_function<Type>::operator() () {
       jnll -= dnorm(beta_ages(j), Type(0.0), Type(3.0), true);
     }
 
-    if(use_Z_sta == 1){
+    if(use_Z_sta){
       // Wide gamma priors for tau precision parameters
-      jnll -= dlgamma(tau_sta, Type(1.0), Type(10.0), true);
+      jnll -= dlgamma(tau_sta, Type(1.0), Type(1000.0), true);
       // Evaluate separable prior against the space-time-age random effects:
-      // Spatial effect = ICAR by province
+      // Spatial effect = CAR model using province neighborhood structure
       // Time effect = AR1 by year
       // Age effect = AR1 by age group
       jnll += density::SCALE(
         density::SEPARABLE(
           density::AR1(rho_age),
-          density::SEPARABLE(density::AR1(rho_year), density::GMRF(Q_icar))
+          density::SEPARABLE(
+            density::AR1(rho_year),
+            density::GMRF(Q_car, !auto_normalize)
+          )
         ), sd_sta
       )(Z_sta);
-      // Soft sum-to-zero constraint on each layer of spatial random effects
-      vector<Type> sum_res(num_ages * num_years);
-      sum_res.setZero();
-      for(int age_i = 0; age_i < num_ages; age_i++){
-        for(int year_i = 0; year_i < num_years; year_i++){
-          for(int loc_i = 0; loc_i < num_locs; loc_i++){
-            sum_res(age_i * year_i + age_i) += Z_sta(loc_i, year_i, age_i);
-          }
-        }
-      }
-      jnll -= dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true).sum();
-      // Adjust normalizing constant to account for rank deficiency of the ICAR precision
-      //  matrix:
-      //  - 1) Calculate log(generalized variance) of outer product matrix
-      Type kronecker_log_genvar = (
-        log(1 - rho_age * rho_age) * num_locs * num_years +
-        log(1 - rho_year * rho_year) * num_locs * num_ages
-      );
-      //  - 2) Adjust normalizing constant
-      jnll -= Q_rank_deficiency * 0.5 * (kronecker_log_genvar - log(2 * PI));
     }
 
-    if(use_nugget == 1){
-      // Wide gamma priors for tau precision parameters
-      jnll -= dlgamma(tau_nugget, Type(1.0), Type(10.0), true);
-      // Soft sum-to-zero constraint on nugget effects for each fourier grouping
-      vector<Type> nugget_sums(num_fourier_groups);
-      vector<Type> nugget_counts(num_fourier_groups);
-      nugget_sums.setZero();
-      nugget_counts.setZero();
-      for(int i = 0; i < num_obs; i++){
-        nugget_sums(idx_fourier(i)) += nugget(i);
-        nugget_counts(idx_fourier(i)) += Type(1.0);
-      }
-      for(int f_i = 0; f_i < num_fourier_groups; f_i++){
-        jnll -= dnorm(nugget_sums(f_i), Type(0.0), Type(0.001)*nugget_counts(f_i), true);
-      }
+    if(use_nugget){
+      // Wide gamma priors for tau precision hyperparameters
+      jnll -= dlgamma(tau_nugget, Type(1.0), Type(1000.0), true);
       // Evaluate prior on each nugget
       jnll -= dnorm(nugget, Type(0.0), sd_nugget, true).sum();
     }
 
-    if(use_Z_fourier == 1){
+    if(use_Z_fourier){
       // N(mean=0, sd=3) prior for harmonic terms
       for(int i = 0; i < num_fourier_groups; i++){
         for(int j = 0; j < Z_fourier.cols(); j++){
@@ -215,8 +214,11 @@ Type objective_function<Type>::operator() () {
       }
     }
 
+    // Option to return the JNLL early for automatic process normalization
+    if(auto_normalize && early_return) return jnll;
 
-  // JNLL CONTRIBUTION FROM DATA ---------------------------------------------->
+
+  // JNLL CONTRIBUTION FROM DATA -------------------------------------------------------->
 
     // Determine fixed effect component for all observations
     fix_effs = X_ij * beta_covs.matrix();
@@ -224,13 +226,13 @@ Type objective_function<Type>::operator() () {
     for(int i=0; i < num_obs; i++){
       if(idx_holdout(i) != holdout){
         // Random effects and seasonality terms
-        if(use_Z_sta == 1){
+        if(use_Z_sta){
           ran_effs(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));
         }
-        if(use_nugget == 1){
+        if(use_nugget){
           ran_effs(i) += nugget(i);
         }
-        if(use_Z_fourier == 1){
+        if(use_Z_fourier){
           for(int lev=1; lev <= harmonics_level; lev++){
             ran_effs(i) += (
               Z_fourier(idx_fourier(i), 2*lev-2) * sin(lev * (idx_week(i) + 1.0) * year_freq) +
@@ -247,7 +249,7 @@ Type objective_function<Type>::operator() () {
     }
 
 
-  // RETURN JNLL -------------------------------------------------------------->
+  // RETURN JNLL ------------------------------------------------------------------------>
 
     return jnll;
 
