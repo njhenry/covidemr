@@ -168,7 +168,21 @@ Type objective_function<Type>::operator() () {
 
   // JNLL CONTRIBUTION FROM PRIORS ------------------------------------------------------>
 
+    // N(mean=0, sd=3) prior for fixed effects
+    // Skip the intercept (index 0)
+    for(int j = 1; j < num_covs; j++){
+      jnll -= dnorm(beta_covs(j), Type(0.0), Type(3.0), true);
+    }
+
+    // N(mean=0, sd=3) prior for age effects
+    // Skip the first age group (index 0)
+    for(int j = 1; j < beta_ages.size(); j++){
+      jnll -= dnorm(beta_ages(j), Type(0.0), Type(3.0), true);
+    }
+
     if(use_Z_sta){
+      // Wide gamma priors for tau precision parameters
+      jnll -= dlgamma(tau_sta, Type(1.0), Type(1000.0), true);
       // Evaluate separable prior against the space-time-age random effects:
       // Spatial effect = CAR model using province neighborhood structure
       // Time effect = AR1 by year
@@ -182,23 +196,6 @@ Type objective_function<Type>::operator() () {
           )
         ), sd_sta
       )(Z_sta);
-      // Option to return the JNLL early for automatic process normalization
-      if(auto_normalize && early_return) return jnll;
-
-      // Wide gamma priors for tau precision parameters
-      jnll -= dlgamma(tau_sta, Type(1.0), Type(1000.0), true);
-    }
-
-    // N(mean=0, sd=3) prior for fixed effects
-    // Skip the intercept (index 0)
-    for(int j = 1; j < num_covs; j++){
-      jnll -= dnorm(beta_covs(j), Type(0.0), Type(3.0), true);
-    }
-
-    // N(mean=0, sd=3) prior for age effects
-    // Skip the first age group (index 0)
-    for(int j = 1; j < beta_ages.size(); j++){
-      jnll -= dnorm(beta_ages(j), Type(0.0), Type(3.0), true);
     }
 
     if(use_nugget){
@@ -216,6 +213,9 @@ Type objective_function<Type>::operator() () {
         }
       }
     }
+
+    // Option to return the JNLL early for automatic process normalization
+    if(auto_normalize && early_return) return jnll;
 
 
   // JNLL CONTRIBUTION FROM DATA -------------------------------------------------------->
