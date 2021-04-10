@@ -12,8 +12,8 @@ setup_run_tmb(
   DLL,
   tmb_outer_maxsteps,
   tmb_inner_maxsteps,
-  run_symbolic_analysis = FALSE,
   normalize = FALSE,
+  run_symbolic_analysis = FALSE,
   set_limits = FALSE,
   limit_max = 10,
   limit_min = -limit_max,
@@ -41,12 +41,11 @@ particular way by the optimizer}
 \item{tmb_inner_maxsteps}{Max number of steps taken by the inner optimizer
 in a single outer optimizer step}
 
+\item{normalize}{[boolean, default FALSE] Run TMB's automatic process normalization
+function? For more details, see \link{\code{TMB::normalize}}.}
+
 \item{run_symbolic_analysis}{[boolean, default FALSE] run symbolic analysis
 to speed up model run time?}
-
-\item{normalize}{[boolean, default FALSE] Run normalize fix for models with
-large random effects sets? Only run this option if you know what you are
-doing and have explicitly coded this fix into the TMB code.}
 
 \item{set_limits}{[boolean, default FALSE] Set limits for fixed effects?}
 
@@ -55,10 +54,6 @@ maximum value for any fixed effect}
 
 \item{limit_min}{[numeric, default -limit_max] If limits are set in the model,
 minimum value of any fixed effect}
-
-\item{optimization_methods}{[char] Character vector naming optimization
-to try in optimx. The first method that converges (returns `convcode==0`)
-will be returned.}
 
 \item{model_name}{[char, default "model"] name of the model}
 

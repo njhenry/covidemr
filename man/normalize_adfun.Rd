@@ -9,10 +9,13 @@ normalize_adfun(adfun, flag, verbose = FALSE)
 \arguments{
 \item{adfun}{The ADFunction to normalize}
 
-\item{flag}{[char] flag to indicate when random effects only have been
+\item{flag}{[char] Flagging variable to indicate whether random effects only have been
 incorporated into the joint negative log-likelihood}
 
 \item{verbose}{[bool, default FALSE] return a message about normalization?}
+
+\item{value}{[char] Value that the flagging variable takes when the data should NOT
+be incorporated into the jnll}
 }
 \value{
 Normalized ADFunction
