@@ -42,7 +42,10 @@ particular way by the optimizer}
 in a single outer optimizer step}
 
 \item{normalize}{[boolean, default FALSE] Run TMB's automatic process normalization
-function? For more details, see \link{\code{TMB::normalize}}.}
+function? Adds two additional items to the TMB data stack: `auto_normalize` (1) and
+`early_return` (0). Both are used by the \code{\link{normalize_adfun}} function to
+get the normalizing constant prior to optimization. For more details, see
+\link{\code{TMB::normalize}}.}
 
 \item{run_symbolic_analysis}{[boolean, default FALSE] run symbolic analysis
 to speed up model run time?}

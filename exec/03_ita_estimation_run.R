@@ -75,7 +75,7 @@ prepped_data$idx_fourier <- assign_seasonality_ids(
 )
 
 # Define a scaled ICAR precision matrix based on spatial adjacency
-Q_icar = covidemr::icar_precision_from_adjacency(adjmat, scale_variance = TRUE)
+Q_icar = covidemr::icar_precision_from_adjacency(adjmat, scale_variance = FALSE)
 # Calculate the rank deficiency of the adjusted ICAR matrix, needed to calculate the
 #  normalizing constant for the JNLL
 Q_rank_deficiency = nrow(Q_icar) - as.integer(Matrix::rankMatrix(Q_icar))
