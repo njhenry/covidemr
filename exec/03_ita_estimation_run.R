@@ -39,14 +39,14 @@ ap$add_argument(
   help='Grouping fields for seasonality (default one group for all data)'
 )
 args <- ap$parse_args(commandArgs(TRUE))
-# args <- list(
-#   run_sex = 'female', data_version = '20210113', model_version = '20210402_icar',
-#   holdout = 0, use_covs = c(
-#     'intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
-#     'elevation', 'temperature'
-#   ), use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = TRUE, fourier_levels = 2,
-#   fourier_groups = c('location_code')
-# )
+args <- list(
+  run_sex = 'female', data_version = '20210113', model_version = '20210410_car_norm',
+  holdout = 0, use_covs = c(
+    'intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access',
+    'elevation', 'temperature'
+  ), use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = TRUE, fourier_levels = 2,
+  fourier_groups = c('location_code')
+)
 message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
 
@@ -74,6 +74,12 @@ prepped_data$idx_fourier <- assign_seasonality_ids(
   input_data = prepped_data, grouping_fields = args$fourier_groups
 )
 
+# Define a scaled ICAR precision matrix based on spatial adjacency
+Q_icar = covidemr::icar_precision_from_adjacency(adjmat, scale_variance = TRUE)
+# Calculate the rank deficiency of the adjusted ICAR matrix, needed to calculate the
+#  normalizing constant for the JNLL
+Q_rank_deficiency = nrow(Q_icar) - as.integer(Matrix::rankMatrix(Q_icar))
+
 # Subset to only input data for this model
 in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baseline==1), ]
 
@@ -93,7 +99,8 @@ tmb_data_stack <- list(
   idx_age = in_data_final$idx_age,
   idx_fourier = in_data_final$idx_fourier,
   idx_holdout = in_data_final$idx_holdout,
-  adjacency_matrix = adjmat,
+  Q_icar = Q_icar,
+  Q_rank_deficiency = Q_rank_deficiency,
   use_Z_sta = as.integer(args$use_Z_sta),
   use_Z_fourier = as.integer(args$use_Z_fourier),
   use_nugget = as.integer(args$use_nugget),

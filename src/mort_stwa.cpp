@@ -18,8 +18,7 @@
 
 
 #include <TMB.hpp>
-using Eigen::SparseMatrix;
-
+using namespace density;
 
 // HELPER FUNCTIONS --------------------------------------------------------------------->
 
@@ -27,27 +26,6 @@ using Eigen::SparseMatrix;
 template<class Type>
 Type rho_transform(Type rho){
   return (exp(rho) - 1) / (exp(rho) + 1);
-}
-
-// Function for preparing a CAR precision matrix (Q) based on an adjacency matrix
-//  and a neighborhood autocorrelation parameter.
-//
-//  param W: Sparse adjacency matrix W = {w_ij}, where w_ij = w_ji = 1 if areal units i
-//    and j are neighbors and 0 otherwise.
-//  param rho: Neighborhood autocorrelation parameter in [-1, 1]
-//
-//  For more information, see:
-//  Banerjee, Carlin, and Gelfand (2015). Hierarchical Modeling and Analysis for Spatial
-//    Data, 2nd Edition. Section 4.3: Conditionally autoregressive models
-//
-template<class Type>
-SparseMatrix<Type> car_precision_from_graph(SparseMatrix<Type> W, Type rho){
-  SparseMatrix<Type> D(W.rows(), W.cols());
-  for(int ii=0; ii < D.rows(); ii++){
-    D.insert(ii, ii) = W.row(ii).sum();
-  }
-  SparseMatrix<Type> Q = (D - rho * W);
-  return Q;
 }
 
 
@@ -81,7 +59,8 @@ Type objective_function<Type>::operator() () {
     DATA_IVECTOR(idx_holdout); // Holdout index for each observation
 
     // Adjacency matrix capturing province neighborhood structure
-    DATA_SPARSE_MATRIX(adjacency_matrix);
+    DATA_SPARSE_MATRIX(Q_icar);
+    DATA_SCALAR(Q_rank_deficiency);
 
     // Which of the correlated random effects structures should be used?
     DATA_INTEGER(use_Z_sta);
@@ -90,11 +69,6 @@ Type objective_function<Type>::operator() () {
 
     // Number of harmonic terms used to fit seasonality
     DATA_INTEGER(harmonics_level);
-
-    // Is random effects automatic process normalization being used? If so, should only
-    //  priors be returned?
-    DATA_INTEGER(auto_normalize);
-    DATA_INTEGER(early_return);
 
 
   // INPUT PARAMETERS ------------------------------------------------------------------->
@@ -106,7 +80,6 @@ Type objective_function<Type>::operator() () {
     // Random effect autocorrelation parameters, transformed scale
     PARAMETER(rho_year_trans); // By year
     PARAMETER(rho_age_trans);  // By age group
-    PARAMETER(rho_loc_trans);  // Neighborhood correlation by province
 
     // Log precision of space-time-age-year random effect
     PARAMETER(log_tau_sta);
@@ -131,22 +104,21 @@ Type objective_function<Type>::operator() () {
     // Basic indices
     int num_obs = y_i.size();
     int num_covs = beta_covs.size();
+    int num_locs = Z_sta.dim(0);
+    int num_years = Z_sta.dim(1);
+    int num_ages = Z_sta.dim(2);
     int num_fourier_groups = Z_fourier.rows();
 
     // Transform some of our parameters
     // - Convert rho from (-Inf, Inf) to (-1, 1)
     Type rho_year = rho_transform(rho_year_trans);
     Type rho_age = rho_transform(rho_age_trans);
-    Type rho_loc = rho_transform(rho_loc_trans);
 
     // Convert from log-tau (-Inf, Inf) to tau (must be positive)
     Type tau_sta = exp(log_tau_sta);
     Type sd_sta = exp(log_tau_sta * Type(-0.5));
     Type tau_nugget = exp(log_tau_nugget);
     Type sd_nugget = exp(log_tau_nugget * Type(-0.5));
-
-    // Construct CAR precision matrix
-    SparseMatrix<Type> Q_car = car_precision_from_graph(adjacency_matrix, rho_loc);
 
     // Vectors of fixed and structured random effects for all data points
     vector<Type> fix_effs(num_obs);
@@ -187,15 +159,27 @@ Type objective_function<Type>::operator() () {
       // Spatial effect = CAR model using province neighborhood structure
       // Time effect = AR1 by year
       // Age effect = AR1 by age group
-      jnll += density::SCALE(
-        density::SEPARABLE(
-          density::AR1(rho_age),
-          density::SEPARABLE(
-            density::AR1(rho_year),
-            density::GMRF(Q_car, !auto_normalize)
-          )
-        ), sd_sta
+      jnll += SCALE(
+        SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_icar))), sd_sta
       )(Z_sta);
+      // SEPARABLE is calculating the density of Q_sta if Q_space was full rank. We need
+      //   to subtract the difference in density caused by the rank deficiency of the
+      //   ICAR precision matrix.
+      jnll -= 0.5 * Q_rank_deficiency * (
+        (num_years - 1) * log(1 - rho_year * rho_year) - log(2 * PI) +
+        (num_ages - 1) * log(1 - rho_age * rho_age) - log(2 * PI)
+      );
+      // Sum-to-zero constraint on each layer of spatial REs for identifiability
+      vector<Type> sum_res(num_ages * num_years);
+      sum_res.setZero();
+      for(int age_i = 0; age_i < num_ages; age_i++){
+        for(int year_i = 0; year_i < num_years; year_i++){
+          for(int loc_i = 0; loc_i < num_locs; loc_i++){
+            sum_res(age_i * year_i + age_i) += Z_sta(loc_i, year_i, age_i);
+          }
+        }
+      }
+      jnll -= dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true).sum();
     }
 
     if(use_nugget){
@@ -213,9 +197,6 @@ Type objective_function<Type>::operator() () {
         }
       }
     }
-
-    // Option to return the JNLL early for automatic process normalization
-    if(auto_normalize && early_return) return jnll;
 
 
   // JNLL CONTRIBUTION FROM DATA -------------------------------------------------------->
