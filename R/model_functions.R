@@ -139,8 +139,8 @@ find_glm_map_parameter_estimates <- function(
 #' @param adfun The ADFunction to normalize
 #' @param flag [char] Flagging variable to indicate whether random effects only have been
 #'   incorporated into the joint negative log-likelihood
-#' @param value [char] Value that the flagging variable takes when the data should NOT
-#'   be incorporated into the jnll
+#' @param value [int, default 0] Value that the flagging variable takes when the data
+#'   should NOT be incorporated into the jnll
 #' @param verbose [bool, default FALSE] return a message about normalization?
 #'
 #' @return Normalized ADFunction
@@ -148,7 +148,7 @@ find_glm_map_parameter_estimates <- function(
 #' @import TMB
 #' @import tictoc
 #' @export
-normalize_adfun <- function(adfun, flag, verbose=FALSE){
+normalize_adfun <- function(adfun, flag, value=0, verbose=FALSE){
   if(verbose) message(" - Running normalization")
   if(verbose) tictoc::tic("    Normalization")
   normalized <- TMB::normalize(adfun, flag=flag, value=value)
