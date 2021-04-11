@@ -159,9 +159,7 @@ Type objective_function<Type>::operator() () {
       // Spatial effect = CAR model using province neighborhood structure
       // Time effect = AR1 by year
       // Age effect = AR1 by age group
-      jnll += SCALE(
-        SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_icar))), sd_sta
-      )(Z_sta);
+      jnll += SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_icar)))(Z_sta);
       // SEPARABLE is calculating the density of Q_sta if Q_space was full rank. We need
       //   to subtract the difference in density caused by the rank deficiency of the
       //   ICAR precision matrix.
@@ -208,7 +206,7 @@ Type objective_function<Type>::operator() () {
       if(idx_holdout(i) != holdout){
         // Random effects and seasonality terms
         if(use_Z_sta){
-          ran_effs(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));
+          ran_effs(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i)) * sd_sta;
         }
         if(use_nugget){
           ran_effs(i) += nugget(i);
