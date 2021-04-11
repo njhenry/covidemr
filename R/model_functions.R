@@ -281,16 +281,16 @@ setup_run_tmb <- function(
   vbmsg(glue::glue("***  {model_name} RUN  ***"))
   vbmsg(paste0(c(rep("*",nchar(model_name)+14),"\n"),collapse=''))
 
-  # Set up openmp threads
-  threads <- system('echo $OMP_NUM_THREADS', intern = TRUE)
-  if(threads != '') {
-    vbmsg(sprintf('Detected %s threads in OMP environmental variable.',threads))
-    openmp(as.numeric(threads))
-  } else {
-    vbmsg("Did not detect environmental OMP variable, defaulting to 2 cores. \n
-           You can set this using OMP_NUM_THREADS.")
-    openmp(2)
-  }
+  # # Set up openmp threads
+  # threads <- system('echo $OMP_NUM_THREADS', intern = TRUE)
+  # if(threads != '') {
+  #   vbmsg(sprintf('Detected %s threads in OMP environmental variable.',threads))
+  #   openmp(as.numeric(threads))
+  # } else {
+  #   vbmsg("Did not detect environmental OMP variable, defaulting to 2 cores. \n
+  #          You can set this using OMP_NUM_THREADS.")
+  #   openmp(2)
+  # }
 
   # Add flags to the data input stack indicating whether automatic process normalization
   #  should be run
@@ -308,10 +308,12 @@ setup_run_tmb <- function(
       data = tmb_data_stack,
       parameters = params_list,
       random = tmb_random,
+      random.start = expression(rep(0, length(random))),
       map = tmb_map,
       DLL = 'covidemr',
       silent = inner_verbose
     )
+    TMB::newtonOption(obj, smartsearch = FALSE, tol = 1E-10)
     obj$env$tracemgc <- as.integer(verbose)
     obj$env$inner.control$trace <- as.integer(inner_verbose)
     tictoc::toc()
@@ -340,13 +342,16 @@ setup_run_tmb <- function(
       lower = fe_lower_vec, upper = fe_upper_vec,
       method = this_method,
       itnmax = tmb_outer_maxsteps,
+      hessian = FALSE,
       control = list(
+        # rel.tol = 1E1 * .Machine$double.eps,
         rel.tol = 1E-10,
         trace = as.integer(verbose),
         follow.on = FALSE,
         dowarn = as.integer(verbose),
         maxit = tmb_inner_maxsteps,
-        starttests = FALSE
+        starttests = FALSE,
+        kkt = FALSE
       )
     )
     if(opt$convcode == 0){

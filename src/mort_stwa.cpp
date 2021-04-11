@@ -135,7 +135,7 @@ Type objective_function<Type>::operator() () {
 
   // Instantiate joint negative log-likelihood (JNLL) ----------------------------------->
 
-    parallel_accumulator<Type> jnll(this);
+    Type jnll = 0.0;
 
 
   // JNLL CONTRIBUTION FROM PRIORS ------------------------------------------------------>
