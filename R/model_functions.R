@@ -344,7 +344,6 @@ setup_run_tmb <- function(
       itnmax = tmb_outer_maxsteps,
       hessian = FALSE,
       control = list(
-        # rel.tol = 1E1 * .Machine$double.eps,
         rel.tol = 1E-10,
         trace = as.integer(verbose),
         follow.on = FALSE,
