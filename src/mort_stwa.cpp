@@ -93,6 +93,9 @@ Type objective_function<Type>::operator() () {
     // Number of harmonic terms used to fit seasonality
     DATA_INTEGER(harmonics_level);
 
+    DATA_INTEGER(auto_normalize);
+    DATA_INTEGER(early_return);
+
 
   // INPUT PARAMETERS ------------------------------------------------------------------->
 
@@ -189,14 +192,14 @@ Type objective_function<Type>::operator() () {
       // Time effect = AR1 by year
       // Age effect = AR1 by age group
       SparseMatrix<Type> Q_sta = lcar_precision_from_adjacency(adjacency_matrix, phi_sta);
-      jnll += SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_sta)))(Z_sta);
+      jnll += SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_sta, bool(1-auto_normalize))))(Z_sta);
       // SEPARABLE is calculating the density of Q_sta if Q_space was full rank. We need
       //   to subtract the difference in density caused by the rank deficiency of the
       //   ICAR precision matrix.
-      // jnll -= 0.5 * icar_rank_deficiency * (
-      //   (num_years - 1) * log(1 - rho_year * rho_year) - log(2 * PI) +
-      //   (num_ages - 1) * log(1 - rho_age * rho_age) - log(2 * PI)
-      // );
+      jnll -= 0.5 * icar_rank_deficiency * (
+        (num_years - 1) * log(1 - rho_year * rho_year) - log(2 * PI) +
+        (num_ages - 1) * log(1 - rho_age * rho_age) - log(2 * PI)
+      );
       // Sum-to-zero constraint on spatial REs for identifiability
       jnll -= dnorm(Z_sta.sum(), Type(0.0), Type(0.001) * Z_sta.size(), true);
     }
@@ -216,6 +219,8 @@ Type objective_function<Type>::operator() () {
         }
       }
     }
+
+    if(early_return) return jnll;
 
 
   // JNLL CONTRIBUTION FROM DATA -------------------------------------------------------->
