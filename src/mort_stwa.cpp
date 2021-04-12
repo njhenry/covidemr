@@ -40,14 +40,14 @@ Type rho_transform(Type rho){
 //   IID variation, strictly between 0 and 1.
 //
 template<class Type>
-SparseMatrix<Type> lcar_precision_from_adjacency(SparseMatrix<Type> W, Type phi){
+SparseMatrix<Type> lcar_precision_from_adjacency(SparseMatrix<Type> W, Type sigma, Type phi){
   SparseMatrix<Type> D(W.rows(), W.cols());
   SparseMatrix<Type> I(W.rows(), W.cols());
   for(int ii=0; ii < W.rows(); ii ++){
     D.insert(ii, ii) = W.row(ii).sum();
     I.insert(ii, ii) = 1.0;
   }
-  SparseMatrix<Type> Q = phi * (D - W) + (1 - phi) * I;
+  SparseMatrix<Type> Q = 1.0 / sigma * (phi * (D - W) + (1 - phi) * I);
   return Q;
 }
 
@@ -108,12 +108,14 @@ Type objective_function<Type>::operator() () {
     PARAMETER(rho_age_trans);  // By age group
 
     // Log precision of space-time-age-year random effect
-    PARAMETER(log_tau_sta);
+    PARAMETER(log_tau_loc);
+    PARAMETER(log_tau_year);
+    PARAMETER(log_tau_age);
     // Log precision of the nugget
     PARAMETER(log_tau_nugget);
 
     // Mixing parameter controlling spatial vs. nonspatial correlation by province
-    PARAMETER(logit_phi_sta);
+    PARAMETER(logit_phi_loc);
 
     // Correlated random effect surfaces
     // -> 3-dimensional array of size: (# locations) by (# years) by (# ages)
@@ -144,13 +146,17 @@ Type objective_function<Type>::operator() () {
     Type rho_age = rho_transform(rho_age_trans);
 
     // Convert from log-tau (-Inf, Inf) to tau (must be positive)
-    Type tau_sta = exp(log_tau_sta);
-    Type sd_sta = exp(log_tau_sta * Type(-0.5));
+    Type tau_loc = exp(log_tau_loc);
+    Type sigma_loc = exp(log_tau_loc * Type(-0.5));
+    Type tau_year = exp(log_tau_year);
+    Type sigma_year = exp(log_tau_year * Type(-0.5));
+    Type tau_age = exp(log_tau_age);
+    Type sigma_age = exp(log_tau_age * Type(-0.5));
     Type tau_nugget = exp(log_tau_nugget);
-    Type sd_nugget = exp(log_tau_nugget * Type(-0.5));
+    Type sigma_nugget = exp(log_tau_nugget * Type(-0.5));
 
     // Convert mixing parameter to the space (0, 1)
-    Type phi_sta = exp(logit_phi_sta)/(1.0 + exp(logit_phi_sta));
+    Type phi_loc = exp(logit_phi_loc)/(Type(1.0) + exp(logit_phi_loc));
 
     // Vectors of fixed and structured random effects for all data points
     vector<Type> fix_effs(num_obs);
@@ -186,13 +192,21 @@ Type objective_function<Type>::operator() () {
 
     if(use_Z_sta){
       // Wide gamma priors for tau precision parameters
-      jnll -= dlgamma(tau_sta, Type(1.0), Type(1000.0), true);
+      jnll -= dlgamma(tau_loc, Type(1.0), Type(10.0), true);
+      jnll -= dlgamma(tau_year, Type(1.0), Type(10.0), true);
+      jnll -= dlgamma(tau_age, Type(1.0), Type(10.0), true);
       // Evaluate separable prior against the space-time-age random effects:
       // Spatial effect = CAR model using province neighborhood structure
       // Time effect = AR1 by year
       // Age effect = AR1 by age group
-      SparseMatrix<Type> Q_sta = lcar_precision_from_adjacency(adjacency_matrix, phi_sta);
-      jnll += SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_sta, bool(1-auto_normalize))))(Z_sta);
+      SparseMatrix<Type> Q_loc = lcar_precision_from_adjacency(adjacency_matrix, sigma_loc, phi_loc);
+      jnll += SEPARABLE(
+        SCALE(AR1(rho_age), sigma_age),
+        SEPARABLE(
+          SCALE(AR1(rho_year), sigma_year),
+          GMRF(Q_loc, bool(1-auto_normalize))
+        )
+      )(Z_sta);
       // SEPARABLE is calculating the density of Q_sta if Q_space was full rank. We need
       //   to subtract the difference in density caused by the rank deficiency of the
       //   ICAR precision matrix.
@@ -206,7 +220,7 @@ Type objective_function<Type>::operator() () {
       // Wide gamma priors for tau precision hyperparameters
       jnll -= dlgamma(tau_nugget, Type(1.0), Type(1000.0), true);
       // Evaluate prior on each nugget
-      jnll -= dnorm(nugget, Type(0.0), sd_nugget, true).sum();
+      jnll -= dnorm(nugget, Type(0.0), sigma_nugget, true).sum();
     }
 
     if(use_Z_fourier){
@@ -223,8 +237,8 @@ Type objective_function<Type>::operator() () {
 
   // JNLL CONTRIBUTION FROM DATA -------------------------------------------------------->
 
-    // Soft sum-to-zero constraint on spatial REs for identifiability
-    jnll -= dnorm(Z_sta.sum(), Type(0.0), Type(0.001) * Z_sta.size(), true);
+    // // Soft sum-to-zero constraint on spatial REs for identifiability
+    // jnll -= dnorm(Z_sta.sum(), Type(0.0), Type(0.001) * Z_sta.size(), true);
 
     // Determine fixed effect component for all observations
     fix_effs = X_ij * beta_covs.matrix();
@@ -233,7 +247,7 @@ Type objective_function<Type>::operator() () {
       if(idx_holdout(i) != holdout){
         // Random effects and seasonality terms
         if(use_Z_sta){
-          ran_effs(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i)) * sd_sta;
+          ran_effs(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));
         }
         if(use_nugget){
           ran_effs(i) += nugget(i);
