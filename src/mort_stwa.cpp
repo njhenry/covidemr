@@ -19,6 +19,7 @@
 
 #include <TMB.hpp>
 using namespace density;
+using Eigen::SparseMatrix;
 
 // HELPER FUNCTIONS --------------------------------------------------------------------->
 
@@ -28,6 +29,27 @@ Type rho_transform(Type rho){
   return (exp(rho) - 1) / (exp(rho) + 1);
 }
 
+// Function for preparing a precision matrix corresponding to a Leroux CAR spatial model,
+//   based on a spatial adjacency matrix. Adapted from the `ar.matrix` package:
+//   https://rdrr.io/cran/ar.matrix/src/R/Q.lCAR.R
+//
+// Parameter W: A sparse adjacency matrix indicating spatial neighborhood structure.
+//   Defined as W = {w_ij}, where w_ij = w_ji = 1 if areal units i and j are neighbors,
+//   and 0 otherwise.
+// Parameter phi: A mixing parameter indicating the relative contribution of spatial and
+//   IID variation, strictly between 0 and 1.
+//
+template<class Type>
+SparseMatrix<Type> lcar_precision_from_adjacency(SparseMatrix<Type> W, Type phi){
+  SparseMatrix<Type> D(W.rows(), W.cols());
+  SparseMatrix<Type> I(W.rows(), W.cols());
+  for(int ii=0; ii < W.rows(); ii ++){
+    D.insert(ii, ii) = W.row(ii).sum();
+    I.insert(ii, ii) = 1.0;
+  }
+  SparseMatrix<Type> Q = phi * (D - W) + (1 - phi) * I;
+  return Q;
+}
 
 // OBJECTIVE FUNCTION ------------------------------------------------------------------->
 
@@ -58,9 +80,10 @@ Type objective_function<Type>::operator() () {
     DATA_IVECTOR(idx_fourier); // Index for the Fourier transform group
     DATA_IVECTOR(idx_holdout); // Holdout index for each observation
 
-    // Adjacency matrix capturing province neighborhood structure
-    DATA_SPARSE_MATRIX(Q_icar);
-    DATA_SCALAR(Q_rank_deficiency);
+    // Adjacency matrix capturing spatial neighborhood structure
+    DATA_SPARSE_MATRIX(adjacency_matrix);
+    // Rank deficiency of the ICAR graph (1 if the adjacency graph is fully connected)
+    DATA_SCALAR(icar_rank_deficiency);
 
     // Which of the correlated random effects structures should be used?
     DATA_INTEGER(use_Z_sta);
@@ -85,6 +108,9 @@ Type objective_function<Type>::operator() () {
     PARAMETER(log_tau_sta);
     // Log precision of the nugget
     PARAMETER(log_tau_nugget);
+
+    // Mixing parameter controlling spatial vs. nonspatial correlation by province
+    PARAMETER(logit_phi_sta);
 
     // Correlated random effect surfaces
     // -> 3-dimensional array of size: (# locations) by (# years) by (# ages)
@@ -119,6 +145,9 @@ Type objective_function<Type>::operator() () {
     Type sd_sta = exp(log_tau_sta * Type(-0.5));
     Type tau_nugget = exp(log_tau_nugget);
     Type sd_nugget = exp(log_tau_nugget * Type(-0.5));
+
+    // Convert mixing parameter to the space (0, 1)
+    Type phi_sta = exp(logit_phi_sta)/(1.0 + exp(logit_phi_sta));
 
     // Vectors of fixed and structured random effects for all data points
     vector<Type> fix_effs(num_obs);
@@ -159,11 +188,12 @@ Type objective_function<Type>::operator() () {
       // Spatial effect = CAR model using province neighborhood structure
       // Time effect = AR1 by year
       // Age effect = AR1 by age group
-      jnll += SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_icar)))(Z_sta);
+      SparseMatrix<Type> Q_sta = lcar_precision_from_adjacency(adjacency_matrix, phi_sta);
+      jnll += SEPARABLE(AR1(rho_age), SEPARABLE(AR1(rho_year), GMRF(Q_sta)))(Z_sta);
       // SEPARABLE is calculating the density of Q_sta if Q_space was full rank. We need
       //   to subtract the difference in density caused by the rank deficiency of the
       //   ICAR precision matrix.
-      jnll -= 0.5 * Q_rank_deficiency * (
+      jnll -= 0.5 * icar_rank_deficiency * (
         (num_years - 1) * log(1 - rho_year * rho_year) - log(2 * PI) +
         (num_ages - 1) * log(1 - rho_age * rho_age) - log(2 * PI)
       );

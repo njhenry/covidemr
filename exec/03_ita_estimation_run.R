@@ -43,11 +43,11 @@ args <- list(
   run_sex = 'female', data_version = '20210113', model_version = '20210410_car_norm',
   holdout = 0,
   use_covs = c(
-    'intercept', 'year_cov', 'tfr'
-    # 'unemp', 'socserv', 'tax_brackets', 'hc_access', 'elevation', 'temperature'
+    'intercept', 'year_cov', 'tfr',
+    'unemp', 'socserv', 'tax_brackets', 'hc_access', 'elevation', 'temperature'
   ),
-  use_Z_sta = TRUE, use_Z_fourier = FALSE, use_nugget = FALSE, fourier_levels = 2,
-  fourier_groups = c('location_code')
+  use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = TRUE, fourier_levels = 2,
+  fourier_groups = c('location_code', 'age_group_code')
 )
 message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
@@ -80,7 +80,7 @@ prepped_data$idx_fourier <- assign_seasonality_ids(
 Q_icar = covidemr::icar_precision_from_adjacency(adjmat, scale_variance = FALSE)
 # Calculate the rank deficiency of the adjusted ICAR matrix, needed to calculate the
 #  normalizing constant for the JNLL
-Q_rank_deficiency = nrow(Q_icar) - as.integer(Matrix::rankMatrix(Q_icar))
+icar_rank_deficiency = nrow(Q_icar) - as.integer(Matrix::rankMatrix(Q_icar))
 
 # Subset to only input data for this model
 in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baseline==1), ]
@@ -101,8 +101,8 @@ tmb_data_stack <- list(
   idx_age = in_data_final$idx_age,
   idx_fourier = in_data_final$idx_fourier,
   idx_holdout = in_data_final$idx_holdout,
-  Q_icar = Q_icar,
-  Q_rank_deficiency = Q_rank_deficiency,
+  adjacency_matrix = adjmat,
+  icar_rank_deficiency = icar_rank_deficiency,
   use_Z_sta = as.integer(args$use_Z_sta),
   use_Z_fourier = as.integer(args$use_Z_fourier),
   use_nugget = as.integer(args$use_nugget),
@@ -132,19 +132,18 @@ params_list <- list(
   rho_year_trans = 1.0, rho_age_trans = 1.0,
   # Variance parameters
   log_tau_sta = 0.0, log_tau_nugget = 0.0,
+  # Mixing parameter for LCAR model
+  logit_phi_sta = 0.0,
   # Structured space-time random effect
-  Z_sta = array(0.0,
-    dim = c(
-      nrow(location_table), # Number of locations
-      length(config$model_years), # Number of unique modeled years
-      length(config$age_cutoffs) # Number of age groups
-    )
+  # Dimensions: # locations (by) # modeled years (by) # age groups
+  Z_sta = array(
+    0.0,
+    dim = c(nrow(location_table), length(config$model_years), length(config$age_cutoffs))
   ),
-  Z_fourier = array(0.0,
-    dim = c(
-      max(in_data_final$idx_fourier) + 1,
-      2 * args$fourier_levels
-    )
+  # Seasonal effect
+  Z_fourier = array(
+    0.0,
+    dim = c(max(in_data_final$idx_fourier) + 1, 2 * args$fourier_levels)
   ),
   # Unstructured random effect
   nugget = rep(0.0, length(tmb_data_stack$n_i))
@@ -158,6 +157,9 @@ if(length(params_list$beta_ages) > 1){
 if(!args$use_Z_sta){
   tmb_map$Z_sta <- rep(as.factor(NA), length(params_list$Z_sta))
   tmb_map$log_tau_sta <- as.factor(NA)
+  tmb_map$rho_age_trans <- as.factor(NA)
+  tmb_map$rho_year_trans <- as.factor(NA)
+  tmb_map$logit_phi_sta <- as.factor(NA)
 }
 if(!args$use_Z_fourier) tmb_map$Z_fourier <- rep(as.factor(NA), length(params_list$Z_fourier))
 if(!args$use_nugget){
@@ -180,11 +182,11 @@ model_fit <- covidemr::setup_run_tmb(
   params_list=params_list,
   tmb_random=tmb_random,
   tmb_map=tmb_map,
-  normalize = FALSE, run_symbolic_analysis = FALSE,
+  normalize = FALSE, run_symbolic_analysis = FALSE, parallel_model = FALSE,
   tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
   model_name="ITA deaths model",
   verbose=TRUE, inner_verbose=TRUE,
-  optimization_methods = c('nlminb','L-BFGS-B')
+  optimization_method = 'nlminb'
 )
 
 message("Getting sdreport and joint precision matrix...")
