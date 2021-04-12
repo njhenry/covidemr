@@ -268,7 +268,7 @@ run_sparsity_algorithm <- function(adfun, verbose=FALSE){
 #' @import TMB glue tictoc optimx
 #' @export
 setup_run_tmb <- function(
-  tmb_data_stack, params_list, tmb_random, tmb_map, DLL, tmb_outer_maxsteps,
+  tmb_data_stack, params_list, tmb_random, tmb_map, tmb_outer_maxsteps,
   tmb_inner_maxsteps, normalize=FALSE, run_symbolic_analysis=FALSE,
   set_limits=FALSE, limit_max=10, limit_min=-limit_max,
   optimization_methods = c('nlminb','L-BFGS-B','Rcgmin','spg','bobyqa','CG','Nelder-Mead'),
