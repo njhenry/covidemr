@@ -253,6 +253,11 @@ run_sparsity_algorithm <- function(adfun, verbose=FALSE){
 #'   maximum value for any fixed effect
 #' @param limit_min [numeric, default -limit_max] If limits are set in the model,
 #'   minimum value of any fixed effect
+#' @param parallel_model [bool, default FALSE] Is the model implemented in parallel? If
+#'   TRUE, opens multiple OMP threads before fitting
+#' @param optimization_method [char, default 'nlminb'] Outer optimization method to use
+#'   for fitting, implemented in the optimx library. Recommended options include 'nlminb'
+#'   and 'L-BFGS-B'
 #' @param model_name [char, default "model"] name of the model
 #' @param verbose [boolean, default FALSE] Should this function return logging
 #'   information about the stage of model fitting, including the outer optizimer
@@ -270,9 +275,8 @@ run_sparsity_algorithm <- function(adfun, verbose=FALSE){
 setup_run_tmb <- function(
   tmb_data_stack, params_list, tmb_random, tmb_map, tmb_outer_maxsteps,
   tmb_inner_maxsteps, normalize=FALSE, run_symbolic_analysis=FALSE,
-  set_limits=FALSE, limit_max=10, limit_min=-limit_max,
-  optimization_methods = c('nlminb','L-BFGS-B','Rcgmin','spg','bobyqa','CG','Nelder-Mead'),
-  model_name="model", verbose=FALSE, inner_verbose=FALSE
+  set_limits=FALSE, limit_max=10, limit_min=-limit_max, parallel_model = FALSE,
+  optimization_method = 'nlminb', model_name="model", verbose=FALSE, inner_verbose=FALSE
 ){
   # Helper function to send a message only if verbose
   vbmsg <- function(x) if(verbose) message(x)
@@ -281,16 +285,18 @@ setup_run_tmb <- function(
   vbmsg(glue::glue("***  {model_name} RUN  ***"))
   vbmsg(paste0(c(rep("*",nchar(model_name)+14),"\n"),collapse=''))
 
-  # # Set up openmp threads
-  # threads <- system('echo $OMP_NUM_THREADS', intern = TRUE)
-  # if(threads != '') {
-  #   vbmsg(sprintf('Detected %s threads in OMP environmental variable.',threads))
-  #   openmp(as.numeric(threads))
-  # } else {
-  #   vbmsg("Did not detect environmental OMP variable, defaulting to 2 cores. \n
-  #          You can set this using OMP_NUM_THREADS.")
-  #   openmp(2)
-  # }
+  if(parallel_model){
+    # Set up openmp threads
+    threads <- system('echo $OMP_NUM_THREADS', intern = TRUE)
+    if(threads != '') {
+      vbmsg(sprintf('Detected %s threads in OMP environmental variable.',threads))
+      openmp(as.numeric(threads))
+    } else {
+      vbmsg("Did not detect environmental OMP variable, defaulting to 2 cores. \n
+             You can set this using OMP_NUM_THREADS.")
+      openmp(2)
+    }
+  }
 
   # Add flags to the data input stack indicating whether automatic process normalization
   #  should be run
@@ -299,67 +305,57 @@ setup_run_tmb <- function(
     tmb_data_stack$early_return <- 0L
   }
 
-  # Try optimizing using a variety of algorithms (all fit in optimx)
-  for(this_method in optimization_methods){
-    # Make Autodiff function
-    vbmsg("Constructing ADFunction...")
-    tictoc::tic("  Making Model ADFun")
-    obj <- TMB::MakeADFun(
-      data = tmb_data_stack,
-      parameters = params_list,
-      random = tmb_random,
-      random.start = expression(rep(0, length(random))),
-      map = tmb_map,
-      DLL = 'covidemr',
-      silent = inner_verbose
-    )
-    TMB::newtonOption(obj, smartsearch = FALSE, tol = 1E-10)
-    obj$env$tracemgc <- as.integer(verbose)
-    obj$env$inner.control$trace <- as.integer(inner_verbose)
-    tictoc::toc()
-    # Optionally run a normalization fix for models with large random effect sets
-    if(normalize) obj <- normalize_adfun(
-      adfun=obj, flag='early_return', value=1, verbose=verbose
-    )
-    # Optionally run optimization algorithms to improve model run time
-    if(run_symbolic_analysis) run_sparsity_algorithm(adfun=obj, verbose=verbose)
-    # Optionally set upper and lower limits for fixed effects
-    fe_names <- names(obj$par)
-    if(set_limits==TRUE){
-      fe_lower_vec = rep(limit_min, times=length(fe_names))
-      fe_upper_vec = rep(limit_max, times=length(fe_names))
-      names(fe_lower_vec) <- names(fe_upper_vec) <- fe_names
-      vbmsg(glue::glue("Fixed effects limited to the range [{limit_min},{limit_max}]."))
-    } else {
-      fe_lower_vec <- -Inf
-      fe_upper_vec <- Inf
-    }
-    # Optimize using nlminb
-    tictoc::tic("  Optimization")
-    message(glue("\n** OPTIMIZING USING METHOD {this_method} **"))
-    opt <- optimx(
-      par = obj$par, fn = obj$fn, gr = obj$gr,
-      lower = fe_lower_vec, upper = fe_upper_vec,
-      method = this_method,
-      itnmax = tmb_outer_maxsteps,
-      hessian = FALSE,
-      control = list(
-        rel.tol = 1E-10,
-        trace = as.integer(verbose),
-        follow.on = FALSE,
-        dowarn = as.integer(verbose),
-        maxit = tmb_inner_maxsteps,
-        starttests = FALSE,
-        kkt = FALSE
-      )
-    )
-    if(opt$convcode == 0){
-      message(glue("Optimization converged using method {this_method}!"))
-      break()
-    } else {
-      message(glue("Optimization failed using method {this_method} (code {opt$convcode})\n"))
-    }
+  # Make Autodiff function
+  vbmsg("Constructing ADFunction...")
+  tictoc::tic("  Making Model ADFun")
+  obj <- TMB::MakeADFun(
+    data = tmb_data_stack, parameters = params_list, random = tmb_random,
+    map = tmb_map, DLL = 'covidemr', silent = inner_verbose,
+    random.start = expression(last.par.best[random])
+  )
+  # Set some inner optimizer options
+  TMB::newtonOption(obj, smartsearch = TRUE, tol = 1E-11)
+  obj$env$tracemgc <- as.integer(verbose)
+  obj$env$inner.control$trace <- as.integer(inner_verbose)
+  tictoc::toc()
+
+  # Optionally run a normalization fix for models with large random effect sets
+  if(normalize) obj <- normalize_adfun(
+    adfun=obj, flag='early_return', value=1, verbose=verbose
+  )
+  # Optionally run optimization algorithms to improve model run time
+  if(run_symbolic_analysis) run_sparsity_algorithm(adfun=obj, verbose=verbose)
+  # Optionally set upper and lower limits for fixed effects
+  fe_names <- names(obj$par)
+  if(set_limits==TRUE){
+    fe_lower_vec = rep(limit_min, times=length(fe_names))
+    fe_upper_vec = rep(limit_max, times=length(fe_names))
+    names(fe_lower_vec) <- names(fe_upper_vec) <- fe_names
+    vbmsg(glue::glue("Fixed effects limited to the range [{limit_min},{limit_max}]."))
+  } else {
+    fe_lower_vec <- -Inf
+    fe_upper_vec <- Inf
   }
+
+  # Optimize using the specified outer optimizer, implemented in optimx
+  tictoc::tic("  Optimization")
+  message(glue("\n** OPTIMIZING USING METHOD {optimization_method} **"))
+  opt <- optimx(
+    par = obj$par, fn = obj$fn, gr = obj$gr,
+    lower = fe_lower_vec, upper = fe_upper_vec,
+    method = optimization_method,
+    itnmax = tmb_outer_maxsteps,
+    hessian = FALSE,
+    control = list(
+      rel.tol = 1E-12,
+      trace = as.integer(verbose),
+      follow.on = FALSE,
+      dowarn = as.integer(verbose),
+      maxit = tmb_inner_maxsteps,
+      starttests = FALSE,
+      kkt = FALSE
+    )
+  )
   conv_code <- opt$convcode
   vbmsg(glue::glue(
     "{model_name} optimization finished with convergence code {conv_code}.\n"
