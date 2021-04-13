@@ -109,8 +109,7 @@ Type objective_function<Type>::operator() () {
 
     // Log precision of space-time-age-year random effect
     PARAMETER(log_tau_loc);
-    PARAMETER(log_tau_year);
-    PARAMETER(log_tau_age);
+    PARAMETER(log_tau_age_year);
     // Log precision of the nugget
     PARAMETER(log_tau_nugget);
 
@@ -148,10 +147,8 @@ Type objective_function<Type>::operator() () {
     // Convert from log-tau (-Inf, Inf) to tau (must be positive)
     Type tau_loc = exp(log_tau_loc);
     Type sigma_loc = exp(log_tau_loc * Type(-0.5));
-    Type tau_year = exp(log_tau_year);
-    Type sigma_year = exp(log_tau_year * Type(-0.5));
-    Type tau_age = exp(log_tau_age);
-    Type sigma_age = exp(log_tau_age * Type(-0.5));
+    Type tau_age_year = exp(log_tau_age_year);
+    Type sigma_age_year = exp(log_tau_age_year * Type(-0.5));
     Type tau_nugget = exp(log_tau_nugget);
     Type sigma_nugget = exp(log_tau_nugget * Type(-0.5));
 
@@ -193,27 +190,19 @@ Type objective_function<Type>::operator() () {
     if(use_Z_sta){
       // Wide gamma priors for tau precision parameters
       jnll -= dlgamma(tau_loc, Type(1.0), Type(10.0), true);
-      jnll -= dlgamma(tau_year, Type(1.0), Type(10.0), true);
-      jnll -= dlgamma(tau_age, Type(1.0), Type(10.0), true);
+      jnll -= dlgamma(tau_age_year, Type(1.0), Type(10.0), true);
       // Evaluate separable prior against the space-time-age random effects:
       // Spatial effect = CAR model using province neighborhood structure
       // Time effect = AR1 by year
       // Age effect = AR1 by age group
       SparseMatrix<Type> Q_loc = lcar_precision_from_adjacency(adjacency_matrix, sigma_loc, phi_loc);
       jnll += SEPARABLE(
-        SCALE(AR1(rho_age), sigma_age),
+        SCALE(AR1(rho_age), sigma_age_year),
         SEPARABLE(
-          SCALE(AR1(rho_year), sigma_year),
+          SCALE(AR1(rho_year), sigma_age_year),
           GMRF(Q_loc, bool(1-auto_normalize))
         )
       )(Z_sta);
-      // SEPARABLE is calculating the density of Q_sta if Q_space was full rank. We need
-      //   to subtract the difference in density caused by the rank deficiency of the
-      //   ICAR precision matrix.
-      // jnll -= 0.5 * icar_rank_deficiency * (
-      //   (num_years - 1) * log(1 - rho_year * rho_year) - log(2 * PI) +
-      //   (num_ages - 1) * log(1 - rho_age * rho_age) - log(2 * PI)
-      // );
     }
 
     if(use_nugget){
@@ -236,9 +225,6 @@ Type objective_function<Type>::operator() () {
 
 
   // JNLL CONTRIBUTION FROM DATA -------------------------------------------------------->
-
-    // // Soft sum-to-zero constraint on spatial REs for identifiability
-    // jnll -= dnorm(Z_sta.sum(), Type(0.0), Type(0.001) * Z_sta.size(), true);
 
     // Determine fixed effect component for all observations
     fix_effs = X_ij * beta_covs.matrix();
