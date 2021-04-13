@@ -29,6 +29,56 @@ Type rho_transform(Type rho){
   return (exp(rho) - 1) / (exp(rho) + 1);
 }
 
+// Function for rescaling a precision matrix to have standard deviation sigma
+//
+// Parameter Q: Unscaled precision matrix
+// Parameter sigma: Standard deviation to scale to
+//
+template<class Type>
+SparseMatrix<Type> scale_precision(SparseMatrix<Type> Q, Type sigma){
+  SparseMatrix<Type> Q_scaled = Q / (sigma * sigma);
+  return Q_scaled;
+}
+
+// Function to create an IID precision matrix (AKA a scaled identity matrix)
+//
+// Parameter dim: Number of rows (and columns) for the precision matrix
+// Parameter sigma: Standard deviation of the iid process
+//
+template<class Type>
+SparseMatrix<Type> iid_precision(int dim, Type sigma = 1.0){
+  SparseMatrix<Type> I(dim, dim);
+  for(int ii=0; ii < dim; ii++){
+    I.insert(ii, ii) = 1.0;
+  }
+  SparseMatrix<Type> I_scaled = scale_precision(I, sigma);
+  return I_scaled;
+}
+
+// Function to create a precision matrix corresponding with an autoregressive process of
+//   order 1 (AR1 process). Adapted from the `ar.matrix` package:
+//   https://rdrr.io/cran/ar.matrix/src/R/Q.AR1.R
+//
+// Corresponds to the process x_t = rho * x_(t-1) + epsilon
+//
+// Parameter steps: Number of steps (in time, age, etc) for the autoregressive process
+// Paramter rho: Correlation between step t and step t+1
+// Parameter sigma: Standard deviation of the random noise term epsilon
+//
+template<class Type>
+SparseMatrix<Type> ar1_precision(int steps, Type rho, Type sigma = 1.0){
+  SparseMatrix<Type> Q(steps, steps);
+  for(int ii=1; ii < steps; ii++){
+    Q.insert(ii, ii) = 1.0 + rho * rho;
+    Q.insert(ii - 1, ii) = rho * -1.0;
+    Q.insert(ii, ii - 1) = rho * -1.0;
+  }
+  Q.insert(0, 0) = 1.0;
+  Q.insert(steps, steps) = 1.0;
+  SparseMatrix<Type> Q_scaled = scale_precision(Q, sigma);
+  return Q_scaled;
+}
+
 // Function for preparing a precision matrix corresponding to a Leroux CAR spatial model,
 //   based on a spatial adjacency matrix. Adapted from the `ar.matrix` package:
 //   https://rdrr.io/cran/ar.matrix/src/R/Q.lCAR.R
@@ -38,18 +88,20 @@ Type rho_transform(Type rho){
 //   and 0 otherwise.
 // Parameter phi: A mixing parameter indicating the relative contribution of spatial and
 //   IID variation, strictly between 0 and 1.
+// Parameter sigma: Standard deviation of the LCAR process
 //
 template<class Type>
-SparseMatrix<Type> lcar_precision_from_adjacency(SparseMatrix<Type> W, Type sigma, Type phi){
+SparseMatrix<Type> lcar_precision(SparseMatrix<Type> W, Type phi, Type sigma = 1.0){
   SparseMatrix<Type> D(W.rows(), W.cols());
-  SparseMatrix<Type> I(W.rows(), W.cols());
+  SparseMatrix<Type> I = iid_precision(W.rows(), Type(1.0));
   for(int ii=0; ii < W.rows(); ii ++){
     D.insert(ii, ii) = W.row(ii).sum();
-    I.insert(ii, ii) = 1.0;
   }
-  SparseMatrix<Type> Q = 1.0 / sigma * (phi * (D - W) + (1 - phi) * I);
-  return Q;
+  SparseMatrix<Type> Q = phi * (D - W) + (1 - phi) * I;
+  SparseMatrix<Type> Q_scaled = scale_precision(Q, sigma);
+  return Q_scaled;
 }
+
 
 // OBJECTIVE FUNCTION ------------------------------------------------------------------->
 
@@ -108,9 +160,7 @@ Type objective_function<Type>::operator() () {
     PARAMETER(rho_age_trans);  // By age group
 
     // Log precision of space-time-age-year random effect
-    PARAMETER(log_tau_loc);
-    PARAMETER(log_tau_year);
-    PARAMETER(log_tau_age);
+    PARAMETER(log_tau_sta);
     // Log precision of the nugget
     PARAMETER(log_tau_nugget);
 
@@ -146,12 +196,8 @@ Type objective_function<Type>::operator() () {
     Type rho_age = rho_transform(rho_age_trans);
 
     // Convert from log-tau (-Inf, Inf) to tau (must be positive)
-    Type tau_loc = exp(log_tau_loc);
-    Type sigma_loc = exp(log_tau_loc * Type(-0.5));
-    Type tau_year = exp(log_tau_year);
-    Type sigma_year = exp(log_tau_year * Type(-0.5));
-    Type tau_age = exp(log_tau_age);
-    Type sigma_age = exp(log_tau_age * Type(-0.5));
+    Type tau_sta = exp(log_tau_sta);
+    Type sigma_sta = exp(log_tau_sta * Type(-0.5));
     Type tau_nugget = exp(log_tau_nugget);
     Type sigma_nugget = exp(log_tau_nugget * Type(-0.5));
 
@@ -180,19 +226,19 @@ Type objective_function<Type>::operator() () {
 
     if(use_Z_sta){
       // Gamma(1, 10) priors for tau precision parameters
-      jnll -= dlgamma(tau_loc, Type(1.0), Type(10.0), true);
-      jnll -= dlgamma(tau_year, Type(1.0), Type(10.0), true);
-      jnll -= dlgamma(tau_age, Type(1.0), Type(10.0), true);
+      jnll -= dlgamma(tau_sta, Type(1.0), Type(10.0), true);
       // Evaluate separable prior against the space-time-age random effects:
       // Spatial effect = CAR model using province neighborhood structure
       // Time effect = AR1 by year
       // Age effect = AR1 by age group
-      SparseMatrix<Type> Q_loc = lcar_precision_from_adjacency(adjacency_matrix, sigma_loc, phi_loc);
+      SparseMatrix<Type> Q_loc = lcar_precision(adjacency_matrix, phi_loc, sigma_sta);
+      SparseMatrix<Type> Q_year = ar1_precision(num_years, rho_year);
+      SparseMatrix<Type> Q_age = ar1_precision(num_ages, rho_age);
       jnll += SEPARABLE(
-        SCALE(AR1(rho_age), sigma_age),
+        GMRF(Q_age, !auto_normalize),
         SEPARABLE(
-          SCALE(AR1(rho_year), sigma_year),
-          GMRF(Q_loc, bool(1-auto_normalize))
+          GMRF(Q_year, !auto_normalize),
+          GMRF(Q_loc, !auto_normalize)
         )
       )(Z_sta);
       // SEPARABLE is calculating the density of Q_sta if Q_space was full rank. We need
@@ -220,7 +266,8 @@ Type objective_function<Type>::operator() () {
       // Gamma(1, 10) priors for tau precision hyperparameters
       jnll -= dlgamma(tau_nugget, Type(1.0), Type(10.0), true);
       // Evaluate prior on each nugget
-      jnll -= dnorm(nugget, Type(0.0), sigma_nugget, true).sum();
+      SparseMatrix<Type> Q_nugget = iid_precision(nugget.size(), sigma_nugget);
+      jnll += GMRF(Q_nugget, !auto_normalize)(nugget);
     }
 
     if(use_Z_fourier){
