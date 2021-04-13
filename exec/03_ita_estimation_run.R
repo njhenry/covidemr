@@ -39,14 +39,14 @@ ap$add_argument(
   help='Grouping fields for seasonality (default one group for all data)'
 )
 args <- ap$parse_args(commandArgs(TRUE))
-args <- list(
-  run_sex = 'female', data_version = '20210113', model_version = '20210410_car_norm',
-  holdout = 0,
-  use_covs = c('intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access', 'elevation', 'temperature'),
-  use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = TRUE, fourier_levels = 2,
-  fourier_groups = c('location_code', 'age_group_code')
-)
-message(str(args))
+# args <- list(
+#   run_sex = 'female', data_version = '20210113', model_version = '20210410_car_norm',
+#   holdout = 0,
+#   use_covs = c('intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access', 'elevation', 'temperature'),
+#   use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = TRUE, fourier_levels = 2,
+#   fourier_groups = c('location_code', 'age_group_code')
+# )
+# message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
 
 
@@ -103,9 +103,7 @@ tmb_data_stack <- list(
   use_Z_sta = as.integer(args$use_Z_sta),
   use_Z_fourier = as.integer(args$use_Z_fourier),
   use_nugget = as.integer(args$use_nugget),
-  harmonics_level = as.integer(args$fourier_levels),
-  auto_normalize = 0L,
-  early_return = 0L
+  harmonics_level = as.integer(args$fourier_levels)
 )
 
 
@@ -177,15 +175,11 @@ if(args$use_Z_fourier) tmb_random <- c(tmb_random, 'Z_fourier')
 
 tictoc::tic("Full TMB model fitting")
 model_fit <- covidemr::setup_run_tmb(
-  tmb_data_stack=tmb_data_stack,
-  params_list=params_list,
-  tmb_random=tmb_random,
-  tmb_map=tmb_map,
-  normalize = FALSE, run_symbolic_analysis = FALSE, parallel_model = FALSE,
-  tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
-  model_name="ITA deaths model",
-  verbose=TRUE, inner_verbose=TRUE,
-  optimization_method = 'nlminb'
+  tmb_data_stack=tmb_data_stack, params_list=params_list, tmb_random=tmb_random,
+  tmb_map=tmb_map, normalize = FALSE, run_symbolic_analysis = FALSE,
+  parallel_model=FALSE, tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
+  model_name="ITA deaths model", verbose=TRUE, inner_verbose=TRUE,
+  optimization_method='nlminb'
 )
 
 message("Getting sdreport and joint precision matrix...")

@@ -298,8 +298,7 @@ setup_run_tmb <- function(
     }
   }
 
-  # Add flags to the data input stack indicating whether automatic process normalization
-  #  should be run
+  # If necessary, add data flags for TMB::normalize() to use
   if(normalize){
     tmb_data_stack$auto_normalize <- 1L
     tmb_data_stack$early_return <- 0L
@@ -311,10 +310,8 @@ setup_run_tmb <- function(
   obj <- TMB::MakeADFun(
     data = tmb_data_stack, parameters = params_list, random = tmb_random,
     map = tmb_map, DLL = 'covidemr', silent = inner_verbose,
-    random.start = expression(last.par.best[random])
+    random.start = expression(rep(0, length(random)))
   )
-  # Set some inner optimizer options
-  TMB::newtonOption(obj, smartsearch = TRUE, tol = 1E-11)
   obj$env$tracemgc <- as.integer(verbose)
   obj$env$inner.control$trace <- as.integer(inner_verbose)
   tictoc::toc()
@@ -339,7 +336,7 @@ setup_run_tmb <- function(
 
   # Optimize using the specified outer optimizer, implemented in optimx
   tictoc::tic("  Optimization")
-  message(glue("\n** OPTIMIZING USING METHOD {optimization_method} **"))
+  vbmsg(glue("\n** OPTIMIZING USING METHOD {optimization_method} **"))
   opt <- optimx(
     par = obj$par, fn = obj$fn, gr = obj$gr,
     lower = fe_lower_vec, upper = fe_upper_vec,
@@ -347,13 +344,8 @@ setup_run_tmb <- function(
     itnmax = tmb_outer_maxsteps,
     hessian = FALSE,
     control = list(
-      rel.tol = 1E-12,
-      trace = as.integer(verbose),
-      follow.on = FALSE,
-      dowarn = as.integer(verbose),
-      maxit = tmb_inner_maxsteps,
-      starttests = FALSE,
-      kkt = FALSE
+      trace = as.integer(verbose), follow.on = FALSE, dowarn = as.integer(verbose),
+      maxit = tmb_inner_maxsteps, starttests = FALSE, kkt = FALSE
     )
   )
   conv_code <- opt$convcode
