@@ -219,6 +219,8 @@ Type objective_function<Type>::operator() () {
     if(use_nugget){
       // Gamma(1, 10) priors for tau precision hyperparameters
       jnll -= dlgamma(tau_nugget, Type(1.0), Type(10.0), true);
+      // Evaluate prior on each nugget
+      jnll -= dnorm(nugget, Type(0.0), sigma_nugget, true).sum();
     }
 
     if(use_Z_fourier){
@@ -245,8 +247,6 @@ Type objective_function<Type>::operator() () {
           ran_effs(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));
         }
         if(use_nugget){
-          // Evaluate prior on each nugget
-          jnll -= dnorm(nugget(i), Type(0.0), sigma_nugget, true);
           ran_effs(i) += nugget(i);
         }
         if(use_Z_fourier){
