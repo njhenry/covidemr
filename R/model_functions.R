@@ -1,4 +1,53 @@
 
+#' Generate an ICAR precision matrix based on an adjacency matrix
+#'
+#' @description Generate a precision matrix for the intrinsic correlated autoregressive
+#'  (ICAR) model specification, a special case of the correlated autoregressive (CAR)
+#'  class of Markov random field models. This precision matrix is usually denoted as "Q".
+#'
+#' @details The precision matrix is fully specified by the adjacency weights, matrix W,
+#'   defined as W = {w_ij} where w_ij is 1 if i and j are neighbors, and 0 otherwise. The
+#'   precision matrix Q is defined as Q = D_w - W, where D_w is a diagonal matrix with
+#'   each diagonal term d_ii equal to the sum of row i in W.
+#'
+#'   Note that the ICAR model is improper, in that the conditional distributions
+#'   specified by the precision matrix do not determine a full joint distribution that
+#'   integrates to 1; in other words, the precision matrix Q is not invertible. The ICAR
+#'   precision matrix can still be used as a prior in a hierarchical model.
+#'
+#'   This function includes optional argument `scale_variance`. If set to `TRUE` (the
+#'   default), the function will rescale the precision matrix to have a generalized
+#'   variance of 1, which may aid in prior specifications that are comparable across
+#'   areal spatial models with different geometries.
+#'
+#'   For more details, see:
+#'   Banerjee, Carlin, and Gelfand (2015). Hierarchical Modeling and Analysis for Spatial
+#'     Data, 2nd Edition. Section 6.4.3.3: CAR models and their difficulties.
+#'   Riebler et al. (2016). An intuitive Bayesian sptial model for disease mapping that
+#'     accounts for scaling. Statistical methods in medical research, 25(4):1145-65.
+#'
+#' @param W Adjacency matrix, with w_ij = w_ji = 1 if areal units i and j are neighbors,
+#'   and zero otherwise. See function details for more information
+#' @param scale_variance [default TRUE] Should the precision matrix be rescaled so that
+#'  the generalized variance is equal to 1? Setting to TRUE may help with prior
+#'  specification.
+#'
+#' @return Sparse ICAR precision matrix Q. See function details for more information.
+#'
+#' @import Matrix INLA
+#' @export
+icar_precision_from_adjacency <- function(W, scale_variance = TRUE){
+  # Generate and return sparse precision matrix
+  Q <- Matrix::Diagonal(n = nrow(W), x = Matrix::rowSums(W)) - W
+  if(scale_variance){
+    # Scale model to have generalized variance of 1
+    constraint_matrix <- matrix(1, nrow = 1, ncol = ncol(Q))
+    Q <- INLA::inla.scale.model(Q, constr = list(A = constraint_matrix, e = 0))
+  }
+  return(Q)
+}
+
+
 #' Assign seasonality grouping IDs
 #'
 #' @description Create a vector that assigns a (zero-indexed) seasonality
@@ -137,8 +186,10 @@ find_glm_map_parameter_estimates <- function(
 #' @description Get the TMB normalization constant from random effects
 #'
 #' @param adfun The ADFunction to normalize
-#' @param flag [char] flag to indicate when random effects only have been
+#' @param flag [char] Flagging variable to indicate whether random effects only have been
 #'   incorporated into the joint negative log-likelihood
+#' @param value [int, default 0] Value that the flagging variable takes when the data
+#'   should NOT be incorporated into the jnll
 #' @param verbose [bool, default FALSE] return a message about normalization?
 #'
 #' @return Normalized ADFunction
@@ -146,10 +197,10 @@ find_glm_map_parameter_estimates <- function(
 #' @import TMB
 #' @import tictoc
 #' @export
-normalize_adfun <- function(adfun, flag, verbose=FALSE){
+normalize_adfun <- function(adfun, flag, value=0, verbose=FALSE){
   if(verbose) message(" - Running normalization")
   if(verbose) tictoc::tic("    Normalization")
-  normalized <- TMB::normalize(adfun, flag=flag)
+  normalized <- TMB::normalize(adfun, flag=flag, value=value)
   if(verbose) tictoc::toc()
   return(normalized)
 }
@@ -190,19 +241,23 @@ run_sparsity_algorithm <- function(adfun, verbose=FALSE){
 #' @param tmb_outer_maxsteps Max number of steps taken by the outer optimizer
 #' @param tmb_inner_maxsteps Max number of steps taken by the inner optimizer
 #'   in a single outer optimizer step
+#' @param normalize [boolean, default FALSE] Run TMB's automatic process normalization
+#'   function? Adds two additional items to the TMB data stack: `auto_normalize` (1) and
+#'   `early_return` (0). Both are used by the \code{\link{normalize_adfun}} function to
+#'   get the normalizing constant prior to optimization. For more details, see
+#'   \link{\code{TMB::normalize}}.
 #' @param run_symbolic_analysis [boolean, default FALSE] run symbolic analysis
 #'   to speed up model run time?
-#' @param normalize [boolean, default FALSE] Run normalize fix for models with
-#'   large random effects sets? Only run this option if you know what you are
-#'   doing and have explicitly coded this fix into the TMB code.
 #' @param set_limits [boolean, default FALSE] Set limits for fixed effects?
 #' @param limit_max [numeric, default 10] If limits are set in the model,
 #'   maximum value for any fixed effect
 #' @param limit_min [numeric, default -limit_max] If limits are set in the model,
 #'   minimum value of any fixed effect
-#' @param optimization_methods [char] Character vector naming optimization
-#'   to try in optimx. The first method that converges (returns `convcode==0`)
-#'   will be returned.
+#' @param parallel_model [bool, default FALSE] Is the model implemented in parallel? If
+#'   TRUE, opens multiple OMP threads before fitting
+#' @param optimization_method [char, default 'nlminb'] Outer optimization method to use
+#'   for fitting, implemented in the optimx library. Recommended options include 'nlminb'
+#'   and 'L-BFGS-B'
 #' @param model_name [char, default "model"] name of the model
 #' @param verbose [boolean, default FALSE] Should this function return logging
 #'   information about the stage of model fitting, including the outer optizimer
@@ -218,11 +273,10 @@ run_sparsity_algorithm <- function(adfun, verbose=FALSE){
 #' @import TMB glue tictoc optimx
 #' @export
 setup_run_tmb <- function(
-  tmb_data_stack, params_list, tmb_random, tmb_map, DLL, tmb_outer_maxsteps,
-  tmb_inner_maxsteps, run_symbolic_analysis=FALSE, normalize=FALSE,
-  set_limits=FALSE, limit_max=10, limit_min=-limit_max,
-  optimization_methods = c('nlminb','L-BFGS-B','Rcgmin','spg','bobyqa','CG','Nelder-Mead'),
-  model_name="model", verbose=FALSE, inner_verbose=FALSE
+  tmb_data_stack, params_list, tmb_random, tmb_map, tmb_outer_maxsteps,
+  tmb_inner_maxsteps, normalize=FALSE, run_symbolic_analysis=FALSE,
+  set_limits=FALSE, limit_max=10, limit_min=-limit_max, parallel_model = FALSE,
+  optimization_method = 'nlminb', model_name="model", verbose=FALSE, inner_verbose=FALSE
 ){
   # Helper function to send a message only if verbose
   vbmsg <- function(x) if(verbose) message(x)
@@ -231,36 +285,41 @@ setup_run_tmb <- function(
   vbmsg(glue::glue("***  {model_name} RUN  ***"))
   vbmsg(paste0(c(rep("*",nchar(model_name)+14),"\n"),collapse=''))
 
-  # Set up openmp threads
-  threads <- system('echo $OMP_NUM_THREADS', intern = TRUE)
-  if(threads != '') {
-    vbmsg(sprintf('Detected %s threads in OMP environmental variable.',threads))
-    openmp(as.numeric(threads))
-  } else {
-    vbmsg("Did not detect environmental OMP variable, defaulting to 2 cores. \n
-           You can set this using OMP_NUM_THREADS.")
-    openmp(2)
+  if(parallel_model){
+    # Set up openmp threads
+    threads <- system('echo $OMP_NUM_THREADS', intern = TRUE)
+    if(threads != '') {
+      vbmsg(sprintf('Detected %s threads in OMP environmental variable.',threads))
+      openmp(as.numeric(threads))
+    } else {
+      vbmsg("Did not detect environmental OMP variable, defaulting to 2 cores. \n
+             You can set this using OMP_NUM_THREADS.")
+      openmp(2)
+    }
   }
 
-  # Add a flag to the data input stack if normalize is specified
-  if(normalize) tmb_data_stack$flag <- 1
+  # If necessary, add data flags for TMB::normalize() to use
+  if(normalize){
+    tmb_data_stack$auto_normalize <- 1L
+    tmb_data_stack$early_return <- 0L
+  }
 
   # Make Autodiff function
   vbmsg("Constructing ADFunction...")
   tictoc::tic("  Making Model ADFun")
   obj <- TMB::MakeADFun(
-    data=tmb_data_stack,
-    parameters=params_list,
-    random=tmb_random,
-    map=tmb_map,
-    DLL='covidemr',
-    silent=inner_verbose
+    data = tmb_data_stack, parameters = params_list, random = tmb_random,
+    map = tmb_map, DLL = 'covidemr', silent = inner_verbose,
+    random.start = expression(rep(0, length(random)))
   )
   obj$env$tracemgc <- as.integer(verbose)
   obj$env$inner.control$trace <- as.integer(inner_verbose)
   tictoc::toc()
+
   # Optionally run a normalization fix for models with large random effect sets
-  if(normalize) obj <- normalize_adfun(adfun=obj, flag='flag', verbose=verbose)
+  if(normalize) obj <- normalize_adfun(
+    adfun=obj, flag='early_return', value=1, verbose=verbose
+  )
   # Optionally run optimization algorithms to improve model run time
   if(run_symbolic_analysis) run_sparsity_algorithm(adfun=obj, verbose=verbose)
   # Optionally set upper and lower limits for fixed effects
@@ -274,37 +333,21 @@ setup_run_tmb <- function(
     fe_lower_vec <- -Inf
     fe_upper_vec <- Inf
   }
-  # Optimize using nlminb
+
+  # Optimize using the specified outer optimizer, implemented in optimx
   tictoc::tic("  Optimization")
-  # Try optimizing using a variety of algorithms (all fit in optimx)
-  for(this_method in optimization_methods){
-    message(glue("\n** OPTIMIZING USING METHOD {this_method} **"))
-    opt <- optimx(
-      par = obj$par,
-      fn = function(x) as.numeric(obj$fn(x)),
-      gr = obj$gr,
-      lower = fe_lower_vec,
-      upper = fe_upper_vec,
-      method = this_method,
-      itnmax = tmb_outer_maxsteps,
-      control = list(
-        trace = as.integer(verbose),
-        follow.on = FALSE,
-        dowarn = as.integer(verbose),
-        maxit = tmb_inner_maxsteps,
-        reltol = 1e-10,
-        starttests = FALSE
-      )
+  vbmsg(glue("\n** OPTIMIZING USING METHOD {optimization_method} **"))
+  opt <- optimx(
+    par = obj$par, fn = obj$fn, gr = obj$gr,
+    lower = fe_lower_vec, upper = fe_upper_vec,
+    method = optimization_method,
+    itnmax = tmb_outer_maxsteps,
+    hessian = FALSE,
+    control = list(
+      trace = as.integer(verbose), follow.on = FALSE, dowarn = as.integer(verbose),
+      maxit = tmb_inner_maxsteps, starttests = FALSE, kkt = FALSE
     )
-    if(opt$convcode == 0){
-      message(glue("Optimization converged using method {this_method}!"))
-      break()
-    } else {
-      message(glue(
-        "Optimization failed using method {this_method} (code {opt$convcode})\n"
-      ))
-    }
-  }
+  )
   conv_code <- opt$convcode
   vbmsg(glue::glue(
     "{model_name} optimization finished with convergence code {conv_code}.\n"
@@ -313,4 +356,3 @@ setup_run_tmb <- function(
   vbmsg(glue::glue("*** {model_name} RUN COMPLETE **************\n\n"))
   return(list(obj=obj, opt=opt))
 }
-

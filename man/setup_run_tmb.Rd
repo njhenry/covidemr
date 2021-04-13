@@ -9,16 +9,15 @@ setup_run_tmb(
   params_list,
   tmb_random,
   tmb_map,
-  DLL,
   tmb_outer_maxsteps,
   tmb_inner_maxsteps,
-  run_symbolic_analysis = FALSE,
   normalize = FALSE,
+  run_symbolic_analysis = FALSE,
   set_limits = FALSE,
   limit_max = 10,
   limit_min = -limit_max,
-  optimization_methods = c("nlminb", "L-BFGS-B", "Rcgmin", "spg", "bobyqa", "CG",
-    "Nelder-Mead"),
+  parallel_model = FALSE,
+  optimization_method = "nlminb",
   model_name = "model",
   verbose = FALSE,
   inner_verbose = FALSE
@@ -41,12 +40,14 @@ particular way by the optimizer}
 \item{tmb_inner_maxsteps}{Max number of steps taken by the inner optimizer
 in a single outer optimizer step}
 
+\item{normalize}{[boolean, default FALSE] Run TMB's automatic process normalization
+function? Adds two additional items to the TMB data stack: `auto_normalize` (1) and
+`early_return` (0). Both are used by the \code{\link{normalize_adfun}} function to
+get the normalizing constant prior to optimization. For more details, see
+\link{\code{TMB::normalize}}.}
+
 \item{run_symbolic_analysis}{[boolean, default FALSE] run symbolic analysis
 to speed up model run time?}
-
-\item{normalize}{[boolean, default FALSE] Run normalize fix for models with
-large random effects sets? Only run this option if you know what you are
-doing and have explicitly coded this fix into the TMB code.}
 
 \item{set_limits}{[boolean, default FALSE] Set limits for fixed effects?}
 
@@ -56,9 +57,12 @@ maximum value for any fixed effect}
 \item{limit_min}{[numeric, default -limit_max] If limits are set in the model,
 minimum value of any fixed effect}
 
-\item{optimization_methods}{[char] Character vector naming optimization
-to try in optimx. The first method that converges (returns `convcode==0`)
-will be returned.}
+\item{parallel_model}{[bool, default FALSE] Is the model implemented in parallel? If
+TRUE, opens multiple OMP threads before fitting}
+
+\item{optimization_method}{[char, default 'nlminb'] Outer optimization method to use
+for fitting, implemented in the optimx library. Recommended options include 'nlminb'
+and 'L-BFGS-B'}
 
 \item{model_name}{[char, default "model"] name of the model}
 
