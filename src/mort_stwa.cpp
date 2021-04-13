@@ -191,7 +191,7 @@ Type objective_function<Type>::operator() () {
     }
 
     if(use_Z_sta){
-      // Wide gamma priors for tau precision parameters
+      // Gamma(1, 10) priors for tau precision parameters
       jnll -= dlgamma(tau_loc, Type(1.0), Type(10.0), true);
       jnll -= dlgamma(tau_year, Type(1.0), Type(10.0), true);
       jnll -= dlgamma(tau_age, Type(1.0), Type(10.0), true);
@@ -210,15 +210,15 @@ Type objective_function<Type>::operator() () {
       // SEPARABLE is calculating the density of Q_sta if Q_space was full rank. We need
       //   to subtract the difference in density caused by the rank deficiency of the
       //   ICAR precision matrix.
-      // jnll -= 0.5 * icar_rank_deficiency * (
-      //   (num_years - 1) * log(1 - rho_year * rho_year) - log(2 * PI) +
-      //   (num_ages - 1) * log(1 - rho_age * rho_age) - log(2 * PI)
-      // );
+      jnll -= 0.5 * icar_rank_deficiency * (
+        (num_years - 1) * log(1 - rho_year * rho_year) - log(2 * PI) +
+        (num_ages - 1) * log(1 - rho_age * rho_age) - log(2 * PI)
+      );
     }
 
     if(use_nugget){
-      // Wide gamma priors for tau precision hyperparameters
-      jnll -= dlgamma(tau_nugget, Type(1.0), Type(1000.0), true);
+      // Gamma(1, 10) priors for tau precision hyperparameters
+      jnll -= dlgamma(tau_nugget, Type(1.0), Type(10.0), true);
       // Evaluate prior on each nugget
       jnll -= dnorm(nugget, Type(0.0), sigma_nugget, true).sum();
     }
@@ -236,9 +236,6 @@ Type objective_function<Type>::operator() () {
 
 
   // JNLL CONTRIBUTION FROM DATA -------------------------------------------------------->
-
-    // // Soft sum-to-zero constraint on spatial REs for identifiability
-    // jnll -= dnorm(Z_sta.sum(), Type(0.0), Type(0.001) * Z_sta.size(), true);
 
     // Determine fixed effect component for all observations
     fix_effs = X_ij * beta_covs.matrix();
