@@ -79,27 +79,23 @@ SparseMatrix<Type> ar1_precision(int steps, Type rho, Type sigma = 1.0){
   return Q_scaled;
 }
 
-// Function for preparing a precision matrix corresponding to a Leroux CAR spatial model,
-//   based on a spatial adjacency matrix. Adapted from the `ar.matrix` package:
-//   https://rdrr.io/cran/ar.matrix/src/R/Q.lCAR.R
+// Function for preparing a precision matrix corresponding to a BYM2 spatial model,
+//   based on a scaled ICAR precision matrix. For more details, see:
+//   Riebler et al. (2016). An intuitive Bayesian sptial model for disease mapping that
+//     accounts for scaling. Statistical methods in medical research, 25(4):1145-65.
 //
-// Parameter W: A sparse adjacency matrix indicating spatial neighborhood structure.
-//   Defined as W = {w_ij}, where w_ij = w_ji = 1 if areal units i and j are neighbors,
-//   and 0 otherwise.
+// Parameter Q_icar: A precision matrix corresponding to an intrinsic correlated
+//   autoregressive (ICAR) model in space, scaled to have generalized variance 1
 // Parameter phi: A mixing parameter indicating the relative contribution of spatial and
 //   IID variation, strictly between 0 and 1.
 // Parameter sigma: Standard deviation of the LCAR process
 //
 template<class Type>
-SparseMatrix<Type> lcar_precision(SparseMatrix<Type> W, Type phi, Type sigma = 1.0){
-  SparseMatrix<Type> D(W.rows(), W.cols());
-  SparseMatrix<Type> I = iid_precision(W.rows(), Type(1.0));
-  for(int ii=0; ii < W.rows(); ii ++){
-    D.insert(ii, ii) = W.row(ii).sum();
-  }
-  SparseMatrix<Type> Q = phi * (D - W) + (1 - phi) * I;
-  SparseMatrix<Type> Q_scaled = scale_precision(Q, sigma);
-  return Q_scaled;
+SparseMatrix<Type> bym2_precision(SparseMatrix<Type> Q_icar, Type phi, Type sigma = 1.0){
+  SparseMatrix<Type> I = iid_precision(Q_icar.rows(), Type(1.0));
+  SparseMatrix<Type> Q_bym2 = phi * Q_icar + (1 - phi) * I;
+  SparseMatrix<Type> Q_bym2_scaled = scale_precision(Q_bym2, sigma);
+  return Q_bym2_scaled;
 }
 
 
@@ -132,8 +128,8 @@ Type objective_function<Type>::operator() () {
     DATA_IVECTOR(idx_fourier); // Index for the Fourier transform group
     DATA_IVECTOR(idx_holdout); // Holdout index for each observation
 
-    // Adjacency matrix capturing spatial neighborhood structure
-    DATA_SPARSE_MATRIX(adjacency_matrix);
+    // Precision matrix for an ICAR spatial model
+    DATA_SPARSE_MATRIX(Q_icar);
     // Rank deficiency of the ICAR graph (1 if the adjacency graph is fully connected)
     DATA_SCALAR(icar_rank_deficiency);
 
@@ -144,9 +140,6 @@ Type objective_function<Type>::operator() () {
 
     // Number of harmonic terms used to fit seasonality
     DATA_INTEGER(harmonics_level);
-
-    DATA_INTEGER(auto_normalize);
-    DATA_INTEGER(early_return);
 
 
   // INPUT PARAMETERS ------------------------------------------------------------------->
@@ -227,20 +220,15 @@ Type objective_function<Type>::operator() () {
     if(use_Z_sta){
       // Gamma(1, 10) priors for tau precision parameters
       jnll -= dlgamma(tau_sta, Type(1.0), Type(10.0), true);
-      // Evaluate separable prior against the space-time-age random effects:
-      // Spatial effect = CAR model using province neighborhood structure
+      // Spatial effect = BYM2 (scaled CAR) model using province neighborhood structure
+      SparseMatrix<Type> Q_loc = bym2_precision(Q_icar, phi_loc, sigma_sta);
       // Time effect = AR1 by year
-      // Age effect = AR1 by age group
-      SparseMatrix<Type> Q_loc = lcar_precision(adjacency_matrix, phi_loc, sigma_sta);
       SparseMatrix<Type> Q_year = ar1_precision(num_years, rho_year);
+      // Age effect = AR1 by age group
       SparseMatrix<Type> Q_age = ar1_precision(num_ages, rho_age);
-      jnll += SEPARABLE(
-        GMRF(Q_age, !auto_normalize),
-        SEPARABLE(
-          GMRF(Q_year, !auto_normalize),
-          GMRF(Q_loc, !auto_normalize)
-        )
-      )(Z_sta);
+
+      // Evaluate separable prior against the space-time-age random effects
+      jnll += SEPARABLE(GMRF(Q_age), SEPARABLE(GMRF(Q_year), GMRF(Q_loc)))(Z_sta);
       // SEPARABLE is calculating the density of Q_sta if Q_space was full rank. We need
       //   to subtract the difference in density caused by the rank deficiency of the
       //   ICAR precision matrix.
@@ -248,6 +236,18 @@ Type objective_function<Type>::operator() () {
         (num_years - 1) * log(1 - rho_year * rho_year) - log(2 * PI) +
         (num_ages - 1) * log(1 - rho_age * rho_age) - log(2 * PI)
       );
+
+      // Sum-to-zero constraint on each layer of spatial REs for identifiability
+      vector<Type> sum_res(num_ages * num_years);
+      sum_res.setZero();
+      for(int age_i = 0; age_i < num_ages; age_i++){
+        for(int year_i = 0; year_i < num_years; year_i++){
+          for(int loc_i = 0; loc_i < num_locs; loc_i++){
+            sum_res(age_i * year_i + age_i) += Z_sta(loc_i, year_i, age_i);
+          }
+        }
+      }
+      jnll -= dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true).sum();
     }
 
     // N(mean=0, sd=3) prior for fixed effects
@@ -267,7 +267,7 @@ Type objective_function<Type>::operator() () {
       jnll -= dlgamma(tau_nugget, Type(1.0), Type(10.0), true);
       // Evaluate prior on each nugget
       SparseMatrix<Type> Q_nugget = iid_precision(nugget.size(), sigma_nugget);
-      jnll += GMRF(Q_nugget, !auto_normalize)(nugget);
+      jnll += GMRF(Q_nugget)(nugget);
     }
 
     if(use_Z_fourier){
@@ -278,8 +278,6 @@ Type objective_function<Type>::operator() () {
         }
       }
     }
-
-    if(early_return) return jnll;
 
 
   // JNLL CONTRIBUTION FROM DATA -------------------------------------------------------->
