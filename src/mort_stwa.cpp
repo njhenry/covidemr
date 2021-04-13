@@ -179,6 +179,10 @@ Type objective_function<Type>::operator() () {
   // JNLL CONTRIBUTION FROM PRIORS ------------------------------------------------------>
 
     if(use_Z_sta){
+      // Gamma(1, 10) priors for tau precision parameters
+      jnll -= dlgamma(tau_loc, Type(1.0), Type(10.0), true);
+      jnll -= dlgamma(tau_year, Type(1.0), Type(10.0), true);
+      jnll -= dlgamma(tau_age, Type(1.0), Type(10.0), true);
       // Evaluate separable prior against the space-time-age random effects:
       // Spatial effect = CAR model using province neighborhood structure
       // Time effect = AR1 by year
@@ -198,14 +202,6 @@ Type objective_function<Type>::operator() () {
         (num_years - 1) * log(1 - rho_year * rho_year) - log(2 * PI) +
         (num_ages - 1) * log(1 - rho_age * rho_age) - log(2 * PI)
       );
-    }
-    if(early_return) return jnll;
-
-    if(use_Z_sta){
-      // Gamma(1, 10) priors for tau precision parameters
-      jnll -= dlgamma(tau_loc, Type(1.0), Type(10.0), true);
-      jnll -= dlgamma(tau_year, Type(1.0), Type(10.0), true);
-      jnll -= dlgamma(tau_age, Type(1.0), Type(10.0), true);
     }
 
     // N(mean=0, sd=3) prior for fixed effects
@@ -235,6 +231,8 @@ Type objective_function<Type>::operator() () {
         }
       }
     }
+
+    if(early_return) return jnll;
 
 
   // JNLL CONTRIBUTION FROM DATA -------------------------------------------------------->
