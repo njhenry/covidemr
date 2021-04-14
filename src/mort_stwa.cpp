@@ -232,21 +232,12 @@ Type objective_function<Type>::operator() () {
       // SEPARABLE is calculating the density of Q_sta if Q_space was full rank. We need
       //   to subtract the difference in density caused by the rank deficiency of the
       //   ICAR precision matrix.
-      // jnll -= 0.5 * icar_rank_deficiency * (
-      //   (num_years - 1) * log(1 - rho_year * rho_year) - log(2 * PI) +
-      //   (num_ages - 1) * log(1 - rho_age * rho_age) - log(2 * PI)
-      // );
-      // Sum-to-zero constraint on each layer of spatial REs for identifiability
-      // vector<Type> sum_res(num_ages * num_years);
-      // sum_res.setZero();
-      // for(int age_i = 0; age_i < num_ages; age_i++){
-      //   for(int year_i = 0; year_i < num_years; year_i++){
-      //     for(int loc_i = 0; loc_i < num_locs; loc_i++){
-      //       sum_res(age_i * year_i + age_i) += Z_sta(loc_i, year_i, age_i);
-      //     }
-      //   }
-      // }
-      // jnll -= dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true).sum();
+      jnll -= 0.5 * icar_rank_deficiency * (
+        (num_years - 1) * log(1 - rho_year * rho_year) - log(2 * PI) +
+        (num_ages - 1) * log(1 - rho_age * rho_age) - log(2 * PI)
+      );
+      // Sum-to-zero constraint on spatial REs for identifiability
+      jnll -= dnorm(Z_sta.sum(), Type(0.0), Type(0.001) * Z_sta.size(), true);
     }
 
     // N(mean=0, sd=3) prior for fixed effects
