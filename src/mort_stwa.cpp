@@ -221,7 +221,7 @@ Type objective_function<Type>::operator() () {
       // Gamma(1, 10) priors for tau precision parameters
       jnll -= dlgamma(tau_sta, Type(1.0), Type(1000.0), true);
       // Spatial effect = BYM2 (scaled CAR) model using province neighborhood structure
-      SparseMatrix<Type> Q_loc = bym2_precision(Q_icar, phi_loc, sigma_sta);
+      SparseMatrix<Type> Q_loc = bym2_precision(Q_icar, phi_loc);
       // Time effect = AR1 by year
       SparseMatrix<Type> Q_year = ar1_precision(num_years, rho_year);
       // Age effect = AR1 by age group
@@ -232,22 +232,21 @@ Type objective_function<Type>::operator() () {
       // SEPARABLE is calculating the density of Q_sta if Q_space was full rank. We need
       //   to subtract the difference in density caused by the rank deficiency of the
       //   ICAR precision matrix.
-      jnll -= 0.5 * icar_rank_deficiency * (
-        (num_years - 1) * log(1 - rho_year * rho_year) - log(2 * PI) +
-        (num_ages - 1) * log(1 - rho_age * rho_age) - log(2 * PI)
-      );
-
+      // jnll -= 0.5 * icar_rank_deficiency * (
+      //   (num_years - 1) * log(1 - rho_year * rho_year) - log(2 * PI) +
+      //   (num_ages - 1) * log(1 - rho_age * rho_age) - log(2 * PI)
+      // );
       // Sum-to-zero constraint on each layer of spatial REs for identifiability
-      vector<Type> sum_res(num_ages * num_years);
-      sum_res.setZero();
-      for(int age_i = 0; age_i < num_ages; age_i++){
-        for(int year_i = 0; year_i < num_years; year_i++){
-          for(int loc_i = 0; loc_i < num_locs; loc_i++){
-            sum_res(age_i * year_i + age_i) += Z_sta(loc_i, year_i, age_i);
-          }
-        }
-      }
-      jnll -= dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true).sum();
+      // vector<Type> sum_res(num_ages * num_years);
+      // sum_res.setZero();
+      // for(int age_i = 0; age_i < num_ages; age_i++){
+      //   for(int year_i = 0; year_i < num_years; year_i++){
+      //     for(int loc_i = 0; loc_i < num_locs; loc_i++){
+      //       sum_res(age_i * year_i + age_i) += Z_sta(loc_i, year_i, age_i);
+      //     }
+      //   }
+      // }
+      // jnll -= dnorm(sum_res, Type(0.0), Type(0.001) * num_locs, true).sum();
     }
 
     // N(mean=0, sd=3) prior for fixed effects
@@ -289,7 +288,7 @@ Type objective_function<Type>::operator() () {
       if(idx_holdout(i) != holdout){
         // Random effects and seasonality terms
         if(use_Z_sta){
-          ran_effs(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i));
+          ran_effs(i) += Z_sta(idx_loc(i), idx_year(i), idx_age(i)) * sigma_sta;
         }
         if(use_nugget){
           ran_effs(i) += nugget(i);
@@ -306,7 +305,9 @@ Type objective_function<Type>::operator() () {
         weekly_mort_rate_i(i) = exp(beta_ages(idx_age(i)) + fix_effs(i) + ran_effs(i));
         // Use the dpois PDF function centered around:
         //  lambda = population * weekly mort rate * (observed days / 7)
-        jnll -= dpois(y_i(i), n_i(i) * weekly_mort_rate_i(i) * days_exp_i(i) / 7.0, true);
+        if(weekly_mort_rate_i(i) > 0.0){
+          jnll -= dpois(y_i(i), n_i(i) * weekly_mort_rate_i(i) * days_exp_i(i) / 7.0, true);
+        }
       }
     }
 
