@@ -309,11 +309,10 @@ setup_run_tmb <- function(
   tictoc::tic("  Making Model ADFun")
   obj <- TMB::MakeADFun(
     data = tmb_data_stack, parameters = params_list, random = tmb_random,
-    map = tmb_map, DLL = 'covidemr', silent = inner_verbose,
-    random.start = expression(rep(0, length(random)))
+    map = tmb_map, DLL = 'covidemr', silent = !inner_verbose,
+    inner.control = list(trace=inner_verbose, tol=1E-11)
   )
   obj$env$tracemgc <- as.integer(verbose)
-  obj$env$inner.control$trace <- as.integer(inner_verbose)
   tictoc::toc()
 
   # Optionally run a normalization fix for models with large random effect sets
@@ -344,8 +343,9 @@ setup_run_tmb <- function(
     itnmax = tmb_outer_maxsteps,
     hessian = FALSE,
     control = list(
-      trace = as.integer(verbose), follow.on = FALSE, dowarn = as.integer(verbose),
-      maxit = tmb_inner_maxsteps, starttests = FALSE, kkt = FALSE
+      trace = as.integer(verbose), follow.on = FALSE,
+      dowarn = as.integer(verbose), maxit = tmb_inner_maxsteps, starttests = FALSE,
+      kkt = FALSE
     )
   )
   conv_code <- opt$convcode

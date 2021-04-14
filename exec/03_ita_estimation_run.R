@@ -40,13 +40,13 @@ ap$add_argument(
 )
 args <- ap$parse_args(commandArgs(TRUE))
 # args <- list(
-#   run_sex = 'female', data_version = '20210113', model_version = '20210410_car_norm',
+#   run_sex = 'male', data_version = '20210113', model_version = '20210413_bym2',
 #   holdout = 0,
-#   use_covs = c('intercept', 'year_cov', 'tfr', 'unemp', 'socserv', 'tax_brackets', 'hc_access', 'elevation', 'temperature'),
+#   use_covs = c('intercept', 'year_cov', 'temperature', 'tfr', 'tax_brackets', 'unemp', 'hc_access', 'socserv', 'elevation'),
 #   use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = TRUE, fourier_levels = 2,
 #   fourier_groups = c('location_code', 'age_group_code')
 # )
-# message(str(args))
+message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
 
 
@@ -126,11 +126,11 @@ params_list <- list(
   beta_covs = unname(max_a_priori_list$fixed_effects_map),
   beta_ages = unname(max_a_priori_list$fixed_effects_grouping),
   # Rho parameters
-  rho_year_trans = 1.0, rho_age_trans = 1.0,
+  rho_year_trans = 0.5, rho_age_trans = 0.5,
   # Variance parameters
-  log_tau_sta = 0.0, log_tau_nugget = 0.0,
+  log_tau_sta = 2.0, log_tau_nugget = 2.0,
   # Mixing parameter for LCAR model
-  logit_phi_loc = 0.0,
+  logit_phi_loc = 2.5,
   # Structured space-time random effect
   # Dimensions: # locations (by) # modeled years (by) # age groups
   Z_sta = array(
@@ -175,11 +175,11 @@ if(args$use_Z_fourier) tmb_random <- c(tmb_random, 'Z_fourier')
 
 tictoc::tic("Full TMB model fitting")
 model_fit <- covidemr::setup_run_tmb(
-  tmb_data_stack=tmb_data_stack, params_list=params_list, tmb_random=tmb_random,
-  tmb_map=tmb_map, normalize = FALSE, run_symbolic_analysis = FALSE,
-  parallel_model=FALSE, tmb_outer_maxsteps=3000, tmb_inner_maxsteps=3000,
-  model_name="ITA deaths model", verbose=TRUE, inner_verbose=TRUE,
-  optimization_method='nlminb'
+  tmb_data_stack = tmb_data_stack, params_list = params_list, tmb_random = tmb_random,
+  tmb_map = tmb_map, normalize = FALSE, run_symbolic_analysis = FALSE,
+  parallel_model = TRUE, tmb_outer_maxsteps = 3000, tmb_inner_maxsteps = 3000,
+  model_name = "ITA deaths model", verbose = TRUE, inner_verbose = FALSE,
+  optimization_method = 'L-BFGS-B'
 )
 
 message("Getting sdreport and joint precision matrix...")
