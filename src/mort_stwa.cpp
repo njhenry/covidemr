@@ -266,6 +266,15 @@ Type objective_function<Type>::operator() () {
       jnll -= dlgamma(tau_nugget, Type(1.0), Type(10.0), true);
       // Evaluate prior on each nugget
       jnll -= dnorm(nugget, Type(0.0), sigma_nugget, true).sum();
+
+      // Soft sum-to-zero constraint on each space-time-age grouping
+      vector<Type> sum_nuggets(num_ages * num_years * num_locs);
+      for(int i=0; i<num_obs; i++){
+        if(idx_holdout(i) != holdout){
+          sum_nuggets(idx_age(i)*num_years*num_locs + idx_year(i)*num_locs + idx_loc(i)) += nugget(i);
+        }
+      }
+      jnll -= dnorm(sum_nuggets, Type(0.0), Type(0.052), true).sum();
     }
 
     if(use_Z_fourier){
