@@ -219,7 +219,7 @@ Type objective_function<Type>::operator() () {
 
     if(use_Z_sta){
       // Gamma(1, 10) priors for tau precision parameters
-      jnll -= dlgamma(tau_sta, Type(1.0), Type(10.0), true);
+      jnll -= dlgamma(tau_sta, Type(1.0), Type(1000.0), true);
       // Spatial effect = BYM2 (scaled CAR) model using province neighborhood structure
       SparseMatrix<Type> Q_loc = bym2_precision(Q_icar, phi_loc);
       // Time effect = AR1 by year
@@ -263,7 +263,7 @@ Type objective_function<Type>::operator() () {
 
     if(use_nugget){
       // Gamma(1, 10) priors for tau precision hyperparameters
-      jnll -= dlgamma(tau_nugget, Type(1.0), Type(10.0), true);
+      jnll -= dlgamma(tau_nugget, Type(1.0), Type(1000.0), true);
       // Evaluate prior on each nugget
       jnll -= dnorm(nugget, Type(0.0), sigma_nugget, true).sum();
     }
