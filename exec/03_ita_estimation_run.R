@@ -166,22 +166,16 @@ params_list <- list(
 
 # Fix particular parameter values using the TMB map
 tmb_map <- list()
+add_nas <- function(na_vec){
+  for(nn in na_vec) tmb_map[[nn]] <<- rep(as.factor(NA), length(params_list[[nn]]))
+}
 if(length(params_list$beta_ages) > 1){
   tmb_map$beta_ages <- as.factor(c(NA, 2:length(params_list$beta_ages)))
 }
-if(!args$use_Z_sta){
-  tmb_map$Z_sta <- rep(as.factor(NA), length(params_list$Z_sta))
-  tmb_map[c('log_tau_sta', 'rho_age_trans', 'rho_year_trans', 'logit_phi_sta')] <- as.factor(NA)
-}
-if(!args$use_Z_fourier){
-  tmb_map$Z_fourier <- rep(as.factor(NA), length(params_list$Z_fourier))
-  tmb_map[c('logit_phi_fourier', 'log_tau_fourier')] <- as.factor(NA)
-}
-if(!args$fourier_ns) tmb_map[c('logit_phi_fourier', 'log_tau_fourier')] <- as.factor(NA)
-if(!args$use_nugget){
-  tmb_map$nugget <- rep(as.factor(NA), length(params_list$nugget))
-  tmb_map$log_tau_nugget <- as.factor(NA)
-}
+if(!args$use_Z_sta) add_nas(c('log_tau_sta','rho_age_trans','rho_year_trans','logit_phi_sta','Z_sta'))
+if(!args$use_Z_fourier | !args$fourier_ns) add_nas(c('logit_phi_fourier', 'log_tau_fourier'))
+if(!args$use_Z_fourier) add_nas('Z_fourier')
+if(!args$use_nugget) add_nas(c('nugget','log_tau_nugget'))
 
 # Set random effects
 tmb_random <- character(0)
