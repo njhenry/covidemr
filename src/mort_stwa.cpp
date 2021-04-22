@@ -198,7 +198,7 @@ Type objective_function<Type>::operator() () {
     int num_locs = Z_sta.dim(0);
     int num_years = Z_sta.dim(1);
     int num_ages = Z_sta.dim(2);
-    int num_f_params = 2 * num_fourier_groups;
+    int num_f_params = 2 * num_fourier_groups * harmonics_level;
 
     // Transform some of our parameters
     // - Convert rho from (-Inf, Inf) to (-1, 1)
@@ -326,7 +326,6 @@ Type objective_function<Type>::operator() () {
 
     // Convenience variable for indexing Fourier harmonic coefficients
     int f_term_i = 0;
-
 
     for(int i=0; i < num_obs; i++){
       if(idx_holdout(i) != holdout){
