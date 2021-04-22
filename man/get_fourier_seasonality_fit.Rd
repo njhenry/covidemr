@@ -7,14 +7,15 @@
 get_fourier_seasonality_fit(fourier_coefs)
 }
 \arguments{
-\item{fourier_coefs}{A vector of length 2 * N, where N is the level of
+\item{fourier_coefs}{A matrix with 2 * N rows, where N is the level of
 harmonics used to fit seasonality. The first of each pair of terms is the
 coefficient on `sin(f(x))`, and the second is the coeffient on `cos(f(x))`,
-where `f(x) = (level) * (yearly harmonic frequency) * (week)`}
+where `f(x) = (level) * (yearly harmonic frequency) * (week)`. Each column represents
+one posterior draw of the same parameter}
 }
 \value{
-Vector of length 52 (corrected number of weeks in a modeled year)
-  with fit seasonality estimate for each week
+Matrix with 52 rows (corrected number of weeks in a modeled year) and the same
+  number of columns as `fourier_coefs`, with seasonality fit for each week and draw
 }
 \description{
 This function takes fit coefficients for `sin(.)` and `cos(.)`
