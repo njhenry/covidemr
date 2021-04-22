@@ -288,7 +288,10 @@ generate_stwa_draws <- function(
     templ[fourier_lookup, f_row := i.f_row, on=fourier_merge_cols]
 
     # Add seasonality random effect
-    res <- res + z_fourier[templ$f_row, ]
+    seasonality_draws <- z_fourier[templ$f_row, ]
+    res <- res + seasonality_draws
+  } else {
+    seasonality_draws <- NULL
   }
 
   log_preds <- cov_fes + age_fes + res
@@ -300,6 +303,7 @@ generate_stwa_draws <- function(
   return(list(
     param_names = parnames,
     param_draws = param_draws,
+    seasonality_draws = seasonality_draws,
     predictive_draws = preds
   ))
 }
