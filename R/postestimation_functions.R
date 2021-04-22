@@ -6,7 +6,6 @@
 #'
 #' @return length(mu) by n.sims matrix of parameter draws
 #'
-#' @import matrixcalc
 #' @import Matrix
 #' @export
 rmvnorm_prec <- function(mu, prec, n.sims) {
@@ -29,41 +28,62 @@ weekly_harmonic_freq <- function(){
 }
 
 
+#' Split a matrix into N chunks by row
+#'
+#' @description Helper function to split a matrix into N evenly-sized chunks.
+#'
+#' @details Pulled from StackOverflow: https://bit.ly/3rksN2N
+#'
+#' @param data Matrix or data.frame to split by row
+#' @param n_chunks [integer] Number of chunks to split the table into
+#'
+#' @return List of length `n_chunks`, each containing a sub-matrix or data.frame
+#'
+array_split <- function(data, n_chunks) {
+  rowIdx <- seq_len(nrow(data))
+  lapply(split(rowIdx, cut(rowIdx, pretty(rowIdx, n_chunks))), function(x) data[x,])
+}
+
+
 #' Generate weekly fluctuations in mortality based on fit harmonics
 #'
 #' @description This function takes fit coefficients for `sin(.)` and `cos(.)`
 #'   from fourier analysis in TMB and returns the fitted estimates of
 #'   seasonality for each week.
 #'
-#' @param fourier_coefs A vector of length 2 * N, where N is the level of
+#' @param fourier_coefs A matrix with 2 * N rows, where N is the level of
 #'   harmonics used to fit seasonality. The first of each pair of terms is the
 #'   coefficient on `sin(f(x))`, and the second is the coeffient on `cos(f(x))`,
-#'   where `f(x) = (level) * (yearly harmonic frequency) * (week)`
+#'   where `f(x) = (level) * (yearly harmonic frequency) * (week)`. Each column represents
+#'   one posterior draw of the same parameter
 #'
-#' @return Vector of length 52 (corrected number of weeks in a modeled year)
-#'   with fit seasonality estimate for each week
+#' @return Matrix with 52 rows (corrected number of weeks in a modeled year) and the same
+#'   number of columns as `fourier_coefs`, with seasonality fit for each week and draw
 #'
 #' @export
 get_fourier_seasonality_fit <- function(fourier_coefs){
   # Input data validation
-  if(length(fourier_coefs) == 0 | class(fourier_coefs) != "numeric"){
-    stop("Fourier coefficients must be a numeric vector with length > 0")
+  if((!'matrix' %in% class(fourier_coefs)) | class(fourier_coefs[1]) != "numeric"){
+    stop("Fourier coefficients must be a numeric matrix")
   }
-  if(length(fourier_coefs) %% 2 != 0){
+  if(nrow(fourier_coefs) == 0){
+    stop('Matrix of Fourier coefficients must have more than zero rows')
+  }
+  if(nrow(fourier_coefs) %% 2 != 0){
     stop("Length of coefficients must be a multiple of 2")
   }
 
   # Set week IDs and output vector
   week_ids <- 1:52
-  seasonal_fit <- rep(0, length(week_ids))
-  harmonics_level <- length(fourier_coefs) / 2
+  seasonal_fit <- matrix(0.0, nrow = length(week_ids), ncol = ncol(fourier_coefs))
+  harmonics_level <- nrow(fourier_coefs) / 2
 
   # Add each level of harmonics
   for(lev in 1:harmonics_level){
     seasonal_fit = (
       seasonal_fit +
-      fourier_coefs[2 * lev - 1] * sin(lev * week_ids * weekly_harmonic_freq()) +
-      fourier_coefs[2 * lev] * cos(lev * week_ids * weekly_harmonic_freq())
+      fourier_coefs[2 * lev - 1, ] * sin(lev * week_ids * weekly_harmonic_freq()) +
+      fourier_coefs[2 * lev, ] * cos(lev * week_ids * weekly_harmonic_freq())
     )
   }
 
@@ -102,6 +122,9 @@ get_fourier_seasonality_fit <- function(fourier_coefs){
 #' @param fourier_harmonics_level [int, default NULL] Number of levels used to
 #'   fit seasonality in the model. This parameter will be ignored if there are
 #'   no `Z_fourier` parameters in the fitted output
+#' @param fourier_stationary [bool, default TRUE] Are the fitted coefficients for each
+#'   seasonality curve the same across years? If FALSE, assumes that the coefficients vary
+#'   by year according to an autoregressive process of order 1
 #'
 #' @return A named list with three items:
 #'    - 'param_names': Vector of parameter names in the order they have been
@@ -115,7 +138,7 @@ get_fourier_seasonality_fit <- function(fourier_coefs){
 generate_stwa_draws <- function(
   tmb_sdreport, keep_params, num_draws, covariate_names, template_dt,
   rescale_covars = FALSE, covar_scaling_factors = NULL,
-  fourier_harmonics_level = NULL
+  fourier_harmonics_level = NULL, fourier_stationary = TRUE
 ){
   # Copy input data
   templ <- data.table::copy(template_dt)
@@ -184,12 +207,12 @@ generate_stwa_draws <- function(
   # Random effects -- structure varies
   res <- matrix(0., nrow=nrow(templ), ncol=num_draws)
 
+  n_ages <- max(templ$idx_age) + 1
+  n_weeks <- max(templ$idx_week) + 1
+  n_years <- max(templ$idx_year) + 1
+  n_locs <- max(templ$idx_loc) + 1
   if(any(parnames=='Z_sta')){
     message("     - Adding joint location-year-age random effect")
-    n_ages <- max(templ$idx_age) + 1
-    n_weeks <- max(templ$idx_week) + 1
-    n_years <- max(templ$idx_year) + 1
-    n_locs <- max(templ$idx_loc) + 1
     if(sum(parnames == 'Z_sta') != (n_ages * n_years * n_locs)){
       stop("Z_sta dims issue")
     }
@@ -207,30 +230,58 @@ generate_stwa_draws <- function(
   if(any(parnames=='Z_fourier')){
     message("     - Adding seasonality effect from fourier analysis")
     if(is.null(fourier_harmonics_level)) stop("Harmonics level cannot be NULL")
-    f_ncol <- fourier_harmonics_level * 2
-    if(sum(parnames=='Z_fourier') %% (f_ncol) != 0){
+
+    # Get fourier coefficients split by year
+    if(fourier_stationary){
+      # Draws the same across all years
+      fourier_draws_list <- list(param_draws[parnames=='Z_fourier', ])
+      fourier_lookup <- CJ(
+        idx_fourier = seq_len(num_fourier_groups) - 1,
+        idx_week = seq_len(52) - 1
+      )
+    } else {
+      # Draws differ by year
+      fourier_draws_list <- array_split(
+        data = param_draws[parnames=='Z_fourier', ],
+        n_chunks = n_years
+      )
+      fourier_lookup <- CJ(
+        idx_year = seq_len(n_years) - 1,
+        idx_fourier = seq_len(num_fourier_groups) - 1,
+        idx_week = seq_len(52) - 1
+      )
+    }
+
+    # Get fit curves by week and grouping variables
+    fourier_fit_list <- vector('list', length=length(fourier_draws_list))
+    num_coefs <- fourier_harmonics_level * 2
+
+    # Check the number of groups in each subset
+    num_subset_rows <- nrow(fourier_draws_list[[1]])
+    if(num_subset_rows %% num_coefs != 0){
       stop("Number of fourier coefficients is not evenly divisible by harmonics level")
     }
-    num_f_groups <- sum(parnames=='Z_fourier') / f_ncol
-    # Create a matrix of size (num weeks * fourier groups) by (num draws)
-    z_fourier <- Reduce(
-      'rbind',
-      lapply(1:num_f_groups, function(f_group){
-        terms_idx <- 0:(f_ncol - 1) * num_f_groups + f_group
-        # Return (52) fit weekly values by draw
-        draws_list <- lapply(
-          1:num_draws, function(dd){
-            get_fourier_seasonality_fit(
-              param_draws[parnames=='Z_fourier',][terms_idx, dd]
-            )
-          })
-        return(matrix(unlist(draws_list), ncol=num_draws))
-      })
-    )
-    # Create the associated lookup table
-    fourier_lookup <- CJ(idx_fourier = (1:num_f_groups) - 1, idx_week = 0:51)
+    num_fourier_groups <- num_subset_rows / num_coefs
+
+    for(f_ii in 1:length(fourier_draws_list)){
+      fourier_fit_list[[f_ii]] <- Reduce(
+        'rbind',
+        lapply(seq_len(num_fourier_groups), function(f_group){
+          f_group_terms_ids <- (seq_len(num_coefs) - 1) * num_fourier_groups + f_group
+          # Return (52) fit weekly values by draw
+          get_fourier_seasonality_fit(fourier_draws_list[[f_ii]][f_group_terms_ids,])
+        })
+      )
+    }
+    # Create a matrix of size (num weeks * fourier groups) by (num draws) for stationary,
+    # or (n years * n weeks * n fourier groups) by (num draws) for nonstationary
+    z_fourier <- Reduce('rbind', fourier_fit_list)
+
+    # Get information about the row associated with each draw
+    fourier_merge_cols <- colnames(fourier_lookup)
     fourier_lookup[, f_row := .I ]
-    templ[fourier_lookup, on=c('idx_fourier', 'idx_week'), f_row := f_row ]
+    templ[fourier_lookup, f_row := i.f_row, on=fourier_merge_cols]
+
     # Add seasonality random effect
     res <- res + z_fourier[templ$f_row, ]
   }
