@@ -148,10 +148,10 @@ params_list <- list(
   # Variance parameters
   log_tau_sta = 2.0, log_tau_nugget = 2.0,
   # Mixing parameter for LCAR model
-  logit_phi_loc = 2.5,
+  logit_phi_loc = 2.0,
   # Hyperparameters used for nonstationary Fourier fits - used across all groupings
-  log_tau_fourier = 0.0,
-  logit_phi_fourier = 0.0,
+  log_tau_fourier = 2.0,
+  logit_phi_fourier = 0.5,
   # Structured space-time random effect
   # Dimensions: # locations (by) # modeled years (by) # age groups
   Z_sta = array(
