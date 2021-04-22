@@ -40,14 +40,14 @@ ap$add_argument(
   help='Grouping fields for seasonality (default one group for all data)'
 )
 args <- ap$parse_args(commandArgs(TRUE))
-# args <- list(
-#   run_sex = 'female', data_version = '20210113', model_version = '20210413_bym2',
-#   holdout = 0,
-#   use_covs = c('intercept', 'year_cov', 'temperature', 'tfr', 'tax_brackets', 'unemp', 'hc_access', 'socserv', 'elevation'),
-#   use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = TRUE, fourier_levels = 2,
-#   fourier_ns = TRUE,
-#   fourier_groups = c('location_code', 'age_group_code')
-# )
+args <- list(
+  run_sex = 'female', data_version = '20210113', model_version = '20210421_ns',
+  holdout = 0,
+  use_covs = c('intercept', 'year_cov', 'temperature', 'tfr', 'tax_brackets', 'unemp', 'hc_access', 'socserv', 'elevation'),
+  use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = TRUE, fourier_levels = 2,
+  fourier_ns = TRUE,
+  fourier_groups = c('location_code', 'age_group_code')
+)
 message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
 
@@ -102,7 +102,7 @@ if(args$fourier_ns){
 ## Define input data stack (the data used to fit the model) ----------------------------->
 
 # Define data stack
-tmb_data_stack <- list(
+data_stack <- list(
   holdout = args$holdout,
   y_i = in_data_final$deaths,
   n_i = in_data_final$pop,
@@ -161,7 +161,7 @@ params_list <- list(
   # Seasonal effect
   Z_fourier = rep(0.0, num_fourier_terms),
   # Unstructured random effect
-  nugget = rep(0.0, length(tmb_data_stack$n_i))
+  nugget = rep(0.0, length(data_stack$n_i))
 )
 
 # Fix particular parameter values using the TMB map
@@ -194,7 +194,7 @@ if(args$use_Z_fourier) tmb_random <- c(tmb_random, 'Z_fourier')
 
 tictoc::tic("Full TMB model fitting")
 model_fit <- covidemr::setup_run_tmb(
-  tmb_data_stack = tmb_data_stack, params_list = params_list, tmb_random = tmb_random,
+  tmb_data_stack = data_stack, params_list = params_list, tmb_random = tmb_random,
   tmb_map = tmb_map, normalize = FALSE, run_symbolic_analysis = FALSE,
   parallel_model = TRUE, tmb_outer_maxsteps = 3000, tmb_inner_maxsteps = 3000,
   model_name = "ITA deaths model", verbose = TRUE, inner_verbose = FALSE,
@@ -217,7 +217,7 @@ postest_list <- vector('list', length = ceiling(config$num_draws / 50))
 for(ii in 1:length(postest_list)){
   postest_list[[ii]] <- covidemr::generate_stwa_draws(
     tmb_sdreport = sdrep,
-    keep_params = setdiff(unique(params_list), 'nugget'),
+    keep_params = setdiff(unique(names(params_list)), 'nugget'),
     num_draws = min(50, config$num_draws - (ii - 1) * 50),
     covariate_names = use_covs,
     template_dt = template_dt,
@@ -239,9 +239,18 @@ colnames(param_draws) <- c('parameter', paste0('V',1:config$num_draws))
 #  - Predictive draws
 pred_draws <- cbindlist(lapply(postest_list, function(sl) as.data.table(sl$predictive_draws)))
 colnames(pred_draws) <- paste0('V',1:config$num_draws)
+if(args$use_Z_fourier){
+  seasonality_draws <- cbindlist(
+    lapply(postest_list, function(sl) as.data.table(sl$seasonality_draws))
+  )
+  colnames(seasonality_draws) <- paste0('V',1:config$num_draws)
+  seasonality_summary <- summarize_draws(seasonality_draws)
+  colnames(seasonality_summary) <- paste0('seas_', colnames(seasonality_summary))
+}
 rm(postest_list)
 # Summarize draws
 pred_summary <- cbind(template_dt, summarize_draws(pred_draws))
+if(args$use_Z_fourier) pred_summary <- cbind(pred_summary, seasonality_summary)
 
 if(args$holdout != 0){
   # FOR OUT-OF-SAMPLE RUNS ONLY: Keep only the OOS data subset
@@ -268,6 +277,7 @@ if(holdout != 0){
   save_objs <- c('args', 'config', 'model_fit','pred_draws')
 } else {
   save_objs <- names(config$results_files)
+  if(!args$use_Z_fourier) save_objs <- setdiff(save_objs, 'seasonality_draws')
 }
 
 for(obj_str in save_objs){
