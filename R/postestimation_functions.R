@@ -40,8 +40,13 @@ weekly_harmonic_freq <- function(){
 #' @return List of length `n_chunks`, each containing a sub-matrix or data.frame
 #'
 array_split <- function(data, n_chunks) {
-  rowIdx <- seq_len(nrow(data))
-  lapply(split(rowIdx, cut(rowIdx, pretty(rowIdx, n_chunks))), function(x) data[x,])
+  d_rows <- nrow(data)
+  rows_per_chunk <- d_rows / n_chunks
+  if(rows_per_chunk %% 1 > 0) stop("Uneven split: ",d_rows," rows into ",n_chunks," chunks")
+  lapply(
+    base::split(seq_len(d_rows), f=rep(seq_len(n_chunks), each=rows_per_chunk)),
+    function(x) data[x,]
+  )
 }
 
 
@@ -82,8 +87,8 @@ get_fourier_seasonality_fit <- function(fourier_coefs){
   for(lev in 1:harmonics_level){
     seasonal_fit = (
       seasonal_fit +
-      fourier_coefs[2 * lev - 1, ] * sin(lev * week_ids * weekly_harmonic_freq()) +
-      fourier_coefs[2 * lev, ] * cos(lev * week_ids * weekly_harmonic_freq())
+      outer(sin(lev * week_ids * weekly_harmonic_freq()), fourier_coefs[2*lev-1, ]) +
+      outer(cos(lev * week_ids * weekly_harmonic_freq()), fourier_coefs[2*lev, ])
     )
   }
 
@@ -278,7 +283,7 @@ generate_stwa_draws <- function(
     z_fourier <- Reduce('rbind', fourier_fit_list)
 
     # Get information about the row associated with each draw
-    fourier_merge_cols <- colnames(fourier_lookup)
+    fourier_merge_cols <- setdiff(colnames(fourier_lookup), 'f_row')
     fourier_lookup[, f_row := .I ]
     templ[fourier_lookup, f_row := i.f_row, on=fourier_merge_cols]
 
