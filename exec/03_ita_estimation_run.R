@@ -34,16 +34,18 @@ ap$add_argument('--use-Z-sta', help='Use space-time-age RE?', action='store_true
 ap$add_argument('--use-Z-fourier', help='Use periodic-fit RE?', action='store_true')
 ap$add_argument('--use-nugget', help='Add a nugget?', action='store_true')
 ap$add_argument('--fourier-levels', help='# levels for seasonality fit', type='integer', default=2)
+ap$add_argument('--fourier-ns', help='Harmonic curve fits nonstationary across years?', action='store_true')
 ap$add_argument(
   '--fourier-groups', type='character', nargs='*', default=NULL,
   help='Grouping fields for seasonality (default one group for all data)'
 )
 args <- ap$parse_args(commandArgs(TRUE))
 # args <- list(
-#   run_sex = 'male', data_version = '20210113', model_version = '20210413_bym2',
+#   run_sex = 'female', data_version = '20210113', model_version = '20210413_bym2',
 #   holdout = 0,
 #   use_covs = c('intercept', 'year_cov', 'temperature', 'tfr', 'tax_brackets', 'unemp', 'hc_access', 'socserv', 'elevation'),
 #   use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = TRUE, fourier_levels = 2,
+#   fourier_ns = TRUE,
 #   fourier_groups = c('location_code', 'age_group_code')
 # )
 message(str(args))
@@ -73,15 +75,29 @@ prepped_data$idx_fourier <- assign_seasonality_ids(
   input_data = prepped_data, grouping_fields = args$fourier_groups
 )
 
+# Subset to only input data for this model
+in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baseline==1), ]
+
 # Define a scaled ICAR precision matrix based on spatial adjacency
 Q_icar <- covidemr::icar_precision_from_adjacency(adjmat, scale_variance = TRUE)
 # Calculate the rank deficiency of the adjusted ICAR matrix, needed to calculate the
 #  normalizing constant for the JNLL
 icar_rank_deficiency = nrow(Q_icar) - as.integer(Matrix::rankMatrix(Q_icar))
 
-# Subset to only input data for this model
-in_data_final <- prepped_data[(deaths<pop) & (pop>0) & (in_baseline==1), ]
-
+# Number of fourier terms and parameters needed below
+num_fourier_groups <- max(template_dt$idx_fourier, na.rm=T) + 1
+num_years <- max(template_dt$idx_year, na.rm=T) + 1
+if(args$fourier_ns){
+  # IF nonstationary: Length = (2x harmonics series level), repeated (# unique fits)
+  #   times, repeated (# years) times
+  # Eg: <coef1 group1 yr1, coef2 group1 yr1, coef1 group2 yr1, coef2 group2 yr1,
+  #      coef1 group1 yr2, coef2 group1 yr2, coef1 group2 yr2, coef2 group2 yr2, ...>
+  num_fourier_terms <- num_fourier_groups * args$fourier_levels * 2 * num_years
+} else {
+  # IF stationary: Length = (2x harmonics series level) repeated (# unique fits) times
+  # Eg: <coef1 group 1, coef2 group 1, coef1 group 2, coef2 group2, ...>
+  num_fourier_terms <- num_fourier_groups * args$fourier_levels * 2
+}
 
 ## Define input data stack (the data used to fit the model) ----------------------------->
 
@@ -103,6 +119,8 @@ tmb_data_stack <- list(
   use_Z_sta = as.integer(args$use_Z_sta),
   use_Z_fourier = as.integer(args$use_Z_fourier),
   use_nugget = as.integer(args$use_nugget),
+  fourier_stationary = as.integer(!args$fourier_ns),
+  num_fourier_groups = num_fourier_groups,
   harmonics_level = as.integer(args$fourier_levels)
 )
 
@@ -131,6 +149,9 @@ params_list <- list(
   log_tau_sta = 2.0, log_tau_nugget = 2.0,
   # Mixing parameter for LCAR model
   logit_phi_loc = 2.5,
+  # Hyperparameters used for nonstationary Fourier fits - used across all groupings
+  log_tau_fourier = 0.0,
+  logit_phi_fourier = 0.0,
   # Structured space-time random effect
   # Dimensions: # locations (by) # modeled years (by) # age groups
   Z_sta = array(
@@ -138,10 +159,7 @@ params_list <- list(
     dim = c(nrow(location_table), length(config$model_years), length(config$age_cutoffs))
   ),
   # Seasonal effect
-  Z_fourier = array(
-    0.0,
-    dim = c(max(in_data_final$idx_fourier) + 1, 2 * args$fourier_levels)
-  ),
+  Z_fourier = rep(0.0, num_fourier_terms),
   # Unstructured random effect
   nugget = rep(0.0, length(tmb_data_stack$n_i))
 )
@@ -153,12 +171,13 @@ if(length(params_list$beta_ages) > 1){
 }
 if(!args$use_Z_sta){
   tmb_map$Z_sta <- rep(as.factor(NA), length(params_list$Z_sta))
-  tmb_map$log_tau_sta <- as.factor(NA)
-  tmb_map$rho_age_trans <- as.factor(NA)
-  tmb_map$rho_year_trans <- as.factor(NA)
-  tmb_map$logit_phi_sta <- as.factor(NA)
+  tmb_map[c('log_tau_sta', 'rho_age_trans', 'rho_year_trans', 'logit_phi_sta')] <- as.factor(NA)
 }
-if(!args$use_Z_fourier) tmb_map$Z_fourier <- rep(as.factor(NA), length(params_list$Z_fourier))
+if(!args$use_Z_fourier){
+  tmb_map$Z_fourier <- rep(as.factor(NA), length(params_list$Z_fourier))
+  tmb_map[c('logit_phi_fourier', 'log_tau_fourier')] <- as.factor(NA)
+}
+if(!args$fourier_ns) tmb_map[c('logit_phi_fourier', 'log_tau_fourier')] <- as.factor(NA)
 if(!args$use_nugget){
   tmb_map$nugget <- rep(as.factor(NA), length(params_list$nugget))
   tmb_map$log_tau_nugget <- as.factor(NA)
