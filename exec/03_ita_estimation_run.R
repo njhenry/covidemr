@@ -217,13 +217,14 @@ postest_list <- vector('list', length = ceiling(config$num_draws / 50))
 for(ii in 1:length(postest_list)){
   postest_list[[ii]] <- covidemr::generate_stwa_draws(
     tmb_sdreport = sdrep,
-    keep_params = c("beta_covs", "beta_ages", "Z_sta", "Z_fourier"),
+    keep_params = setdiff(unique(params_list), 'nugget'),
     num_draws = min(50, config$num_draws - (ii - 1) * 50),
     covariate_names = use_covs,
     template_dt = template_dt,
     rescale_covars = TRUE,
     covar_scaling_factors = covar_scaling_factors,
-    fourier_harmonics_level = args$fourier_levels
+    fourier_harmonics_level = args$fourier_levels,
+    fourier_stationary = !args$fourier_ns
   )
 }
 
