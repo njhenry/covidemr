@@ -40,14 +40,14 @@ ap$add_argument(
   help='Grouping fields for seasonality (default one group for all data)'
 )
 args <- ap$parse_args(commandArgs(TRUE))
-args <- list(
-  run_sex = 'female', data_version = '20210113', model_version = '20210421_ns',
-  holdout = 0,
-  use_covs = c('intercept', 'year_cov', 'temperature', 'tfr', 'tax_brackets', 'unemp', 'hc_access', 'socserv', 'elevation'),
-  use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = TRUE, fourier_levels = 2,
-  fourier_ns = TRUE,
-  fourier_groups = c('location_code', 'age_group_code')
-)
+# args <- list(
+#   run_sex = 'female', data_version = '20210113', model_version = '20210421_ns',
+#   holdout = 0,
+#   use_covs = c('intercept', 'year_cov', 'temperature', 'tfr', 'tax_brackets', 'unemp', 'hc_access', 'socserv', 'elevation'),
+#   use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = TRUE, fourier_levels = 2,
+#   fourier_ns = TRUE,
+#   fourier_groups = c('location_code', 'age_group_code')
+# )
 message(str(args))
 use_covs <- args$use_covs # Shorten for convenience
 
