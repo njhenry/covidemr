@@ -41,8 +41,8 @@ ap$add_argument(
 )
 args <- ap$parse_args(commandArgs(TRUE))
 # args <- list(
-#   run_sex = 'female', data_version = '20210113', model_version = '20210421_ns',
-#   holdout = 0,
+#   run_sex = 'female', data_version = '20210113', model_version = '20210421_f2fal_ns',
+#   holdout = 3,
 #   use_covs = c('intercept', 'year_cov', 'temperature', 'tfr', 'tax_brackets', 'unemp', 'hc_access', 'socserv', 'elevation'),
 #   use_Z_sta = TRUE, use_Z_fourier = TRUE, use_nugget = TRUE, fourier_levels = 2,
 #   fourier_ns = TRUE,
