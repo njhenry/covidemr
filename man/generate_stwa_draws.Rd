@@ -12,7 +12,8 @@ generate_stwa_draws(
   template_dt,
   rescale_covars = FALSE,
   covar_scaling_factors = NULL,
-  fourier_harmonics_level = NULL
+  fourier_harmonics_level = NULL,
+  fourier_stationary = TRUE
 )
 }
 \arguments{
@@ -48,6 +49,10 @@ argument should be set to a data.table with three fields:
 \item{fourier_harmonics_level}{[int, default NULL] Number of levels used to
 fit seasonality in the model. This parameter will be ignored if there are
 no `Z_fourier` parameters in the fitted output}
+
+\item{fourier_stationary}{[bool, default TRUE] Are the fitted coefficients for each
+seasonality curve the same across years? If FALSE, assumes that the coefficients vary
+by year according to an autoregressive process of order 1}
 }
 \value{
 A named list with three items:

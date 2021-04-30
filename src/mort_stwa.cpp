@@ -138,6 +138,11 @@ Type objective_function<Type>::operator() () {
     DATA_INTEGER(use_Z_fourier);
     DATA_INTEGER(use_nugget);
 
+    // Information about the seasonality harmonics fit
+    // Are the parameters for the harmonics stationary?
+    DATA_INTEGER(fourier_stationary);
+    // Number of groupings for harmonics fit
+    DATA_INTEGER(num_fourier_groups);
     // Number of harmonic terms used to fit seasonality
     DATA_INTEGER(harmonics_level);
 
@@ -160,13 +165,25 @@ Type objective_function<Type>::operator() () {
     // Mixing parameter controlling spatial vs. nonspatial correlation by province
     PARAMETER(logit_phi_loc);
 
+    // Hyperparameters used for nonstationary Fourier fits - used across all AR1 groups
+    // phi (autocorrelation hyperparameter) for AR1 process
+    PARAMETER(logit_phi_fourier);
+    // log sigma (logged precision of innovation term in AR1 process)
+    PARAMETER(log_tau_fourier);
+
     // Correlated random effect surfaces
     // -> 3-dimensional array of size: (# locations) by (# years) by (# ages)
     PARAMETER_ARRAY(Z_sta);
 
-    // Harmonics matrix
-    // Dimensions: (# separately-fit harmonics) by (2 x harmonics series level)
-    PARAMETER_ARRAY(Z_fourier);
+    // Vector of harmonics coefficients
+    // IF stationary: Length = (2x harmonics series level) repeated (# unique fits) times
+    // Eg: <coef1 group 1, coef2 group 1, coef1 group 2, coef2 group2, ...>
+    //
+    // IF nonstationary: Length = (2x harmonics series level), repeated (# unique fits)
+    //   times, repeated (# years) times
+    // Eg: <coef1 group1 yr1, coef2 group1 yr1, coef1 group2 yr1, coef2 group2 yr1,
+    //      coef1 group1 yr2, coef2 group1 yr2, coef1 group2 yr2, coef2 group2 yr2, ...>
+    PARAMETER_VECTOR(Z_fourier);
 
     // Nugget
     // Vector of random effects, same length as number of observations
@@ -181,7 +198,7 @@ Type objective_function<Type>::operator() () {
     int num_locs = Z_sta.dim(0);
     int num_years = Z_sta.dim(1);
     int num_ages = Z_sta.dim(2);
-    int num_fourier_groups = Z_fourier.rows();
+    int num_f_params = 2 * num_fourier_groups * harmonics_level;
 
     // Transform some of our parameters
     // - Convert rho from (-Inf, Inf) to (-1, 1)
@@ -195,7 +212,12 @@ Type objective_function<Type>::operator() () {
     Type sigma_nugget = exp(log_tau_nugget * Type(-0.5));
 
     // Convert mixing parameter to the space (0, 1)
-    Type phi_loc = exp(logit_phi_loc)/(Type(1.0) + exp(logit_phi_loc));
+    Type phi_loc = invlogit(logit_phi_loc);
+
+    // Transform harmonics hyperparameters (used when fourier terms are nonstationary)
+    Type phi_fourier = invlogit(logit_phi_fourier);
+    Type tau_fourier = exp(log_tau_fourier);
+    Type sigma_fourier = exp(log_tau_fourier * Type(-0.5));
 
     // Vectors of fixed and structured random effects for all data points
     vector<Type> fix_effs(num_obs);
@@ -218,7 +240,7 @@ Type objective_function<Type>::operator() () {
   // JNLL CONTRIBUTION FROM PRIORS ------------------------------------------------------>
 
     if(use_Z_sta){
-      // Gamma(1, 10) priors for tau precision parameters
+      // Gamma(1, 1E3) priors for tau precision parameters
       jnll -= dlgamma(tau_sta, Type(1.0), Type(1000.0), true);
       // Spatial effect = BYM2 (scaled CAR) model using province neighborhood structure
       SparseMatrix<Type> Q_loc = bym2_precision(Q_icar, phi_loc);
@@ -262,18 +284,37 @@ Type objective_function<Type>::operator() () {
     }
 
     if(use_nugget){
-      // Gamma(1, 10) priors for tau precision hyperparameters
+      // Gamma(1, 1E3) priors for tau precision hyperparameters
       jnll -= dlgamma(tau_nugget, Type(1.0), Type(1000.0), true);
       // Evaluate prior on each nugget
       jnll -= dnorm(nugget, Type(0.0), sigma_nugget, true).sum();
     }
 
     if(use_Z_fourier){
-      // N(mean=0, sd=3) prior for harmonic terms
-      for(int i = 0; i < num_fourier_groups; i++){
-        for(int j = 0; j < Z_fourier.cols(); j++){
-          jnll -= dnorm(Z_fourier(i,j), Type(0.0), Type(3.0), true);
+      if(fourier_stationary){
+        // CASE: Fourier terms are fixed across years
+        // N(mean=0, sd=3) prior for harmonic terms
+        jnll -= dnorm(Z_fourier, Type(0.0), Type(3.0), true).sum();
+      } else {
+        // CASE: Fourier terms are nonstationary (autoregressive) across years
+        // Gamma(1, 1E3) priors for tau precision hyperparameters
+        jnll -= dlgamma(tau_fourier, Type(1.0), Type(1000.0), true);
+        // Evaluate all time series of Fourier terms against the same AR1 precision matrix
+        vector<Type> coefficients_by_year(num_years);
+        vector<Type> fourier_intercepts(num_f_params);
+        coefficients_by_year.setZero();
+        SparseMatrix<Type> Q_f_ar1 = ar1_precision(num_years, phi_fourier, sigma_fourier);
+        for(int hp_i = 0; hp_i < num_f_params; hp_i++){
+          // Populate coefficients across all years
+          for(int yr_i = 0; yr_i < num_years; yr_i++){
+            coefficients_by_year(yr_i) = Z_fourier(yr_i * num_f_params + hp_i);
+          }
+          // Evaluate density against the mean-zero time series
+          fourier_intercepts(hp_i) = coefficients_by_year.mean();
+          jnll += GMRF(Q_f_ar1)(coefficients_by_year - fourier_intercepts(hp_i));
         }
+        // N(mean=0, sd=3) for the mean across all years
+        jnll -= dnorm(fourier_intercepts, Type(0.0), Type(3.0), true).sum();
       }
     }
 
@@ -282,6 +323,9 @@ Type objective_function<Type>::operator() () {
 
     // Determine fixed effect component for all observations
     fix_effs = X_ij * beta_covs.matrix();
+
+    // Convenience variable for indexing Fourier harmonic coefficients
+    int f_term_i = 0;
 
     for(int i=0; i < num_obs; i++){
       if(idx_holdout(i) != holdout){
@@ -294,9 +338,15 @@ Type objective_function<Type>::operator() () {
         }
         if(use_Z_fourier){
           for(int lev=1; lev <= harmonics_level; lev++){
+            // Stationary case: Fourier terms indexed across groups > harmonic levels
+            f_term_i = 2 * harmonics_level * idx_fourier(i) + 2 * lev;
+            if(!fourier_stationary){
+              // Nonstationary case: Also indexed across years
+              f_term_i += num_f_params * idx_year(i);
+            }
             ran_effs(i) += (
-              Z_fourier(idx_fourier(i), 2*lev-2) * sin(lev * (idx_week(i) + 1.0) * year_freq) +
-              Z_fourier(idx_fourier(i), 2*lev-1) * cos(lev * (idx_week(i) + 1.0) * year_freq)
+              Z_fourier(f_term_i) * sin(lev * (idx_week(i) + 1.0) * year_freq) +
+              Z_fourier(f_term_i + 1) * cos(lev * (idx_week(i) + 1.0) * year_freq)
             );
           }
         }

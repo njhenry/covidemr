@@ -47,6 +47,7 @@ results_files:
   sdrep: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_sdrep.RDS'
   param_draws: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_param_draws.csv'
   pred_draws: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_pred_draws.csv'
+  seasonality_draws: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_seasonality_draws.csv'
   pred_summary: '{model_results_dir}/{model_run_version}/{run_sex}_{holdout}_pred_summary.csv'
 model_years: [2015, 2016, 2017, 2018, 2019, 2020]
 age_cutoffs: [0, 60, 70, 80, 90]

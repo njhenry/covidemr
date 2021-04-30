@@ -6,4 +6,4 @@
 #$ -m n
 #$ -M nathaniel.henry@ndm.ox.ac.uk
 # R submission script
-/users/moore/bsb907/miniconda3/envs/r_env/bin/Rscript --vanilla "$@"
+/users/moore/bsb907/miniconda3/envs/crvsmaps/bin/Rscript --vanilla "$@"
