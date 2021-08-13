@@ -43,7 +43,7 @@ pop_dt <- fread(get_prep_fp('population'))
 polys_sf <- readRDS(get_prep_fp('shapefile_sf'))
 covid_mort <- fread(get_prep_fp('covid_deaths'))
 top_prov_labs <- fread(get_prep_fp('province_labels'))
-top_reg_labs <- fread(get_prep_fp('region_labels'))
+top_reg_labs <- fread(get_prep_fp('region_labels'))[, region_code := .I ]
 top_reg_labs[, label_name := gsub('\\\\n','\n', label_name)]
 
 
@@ -239,6 +239,17 @@ summ_by_age_week_focus <- aggregate_summarize_excess(
   ][wk_starts, date := i.date, on = 'week'
   ][ order(age_group_code, week) ]
 
+# Grouped by region and week across the focal period
+summ_by_region_week_focus <- aggregate_summarize_excess(
+  baseline_deaths_dt[ week %in% (start_week:(focus_end_week + 1)), ],
+  aggregate = TRUE, group_cols = c('region_code', 'region_name', 'week')
+)[order(region_code, week)][ ex_d_mean < 0, ex_d_mean := 0 ]
+
+# Grouped by region across the focal period
+summ_by_region_focus <- aggregate_summarize_excess(
+  baseline_deaths_dt[ week %in% start_week:focus_end_week, ],
+  aggregate=TRUE, group_cols = c('region_code', 'region_name')
+)[order(region_code)]
 
 tictoc::toc()
 
@@ -390,6 +401,101 @@ for(week_id in start_week:focus_end_week){
   plot(excess_plot_weekly)
   dev.off()
 }
+
+
+## Plot ratio of registered COVID deaths to excess deaths by region in the north ---------
+
+er_plot_regions <- 1:9
+# Data prep: merge time series
+er_covid_ts_summ <- covid_mort[, .(covid_deaths = sum(covid_deaths)), by=.(region_code, week)]
+er_ts_merged <- merge(
+  x=summ_by_region_week_focus, y=er_covid_ts_summ, by=c('region_code','week')
+)[ week %in% (start_week:(focus_end_week+1))]
+(er_ts_merged
+  [, em_ratio := covid_deaths / ex_d_mean ]
+  [ex_d_mean < covid_deaths, em_ratio := 1 ]
+  [covid_deaths == 0 , em_ratio := 0 ]
+  [covid_deaths == 0 & ex_d_mean == 0, em_ratio := as.numeric(NA) ]
+)
+(er_ts_merged
+  [wk_starts, date := i.date, on='week']
+  [, region_name := NULL]
+  [top_reg_labs, region_name := i.label_name , on='region_code']
+  [, region_name := gsub('\\n', ' ', region_name)]
+  [, region_name := gsub('- ', '-', region_name)]
+)
+# Data prep: merge aggregate data
+er_covid_summ <- covid_mort[
+    week %in% start_week:focus_end_week,
+  ][, .(covid_deaths = sum(covid_deaths)), by=region_code]
+er_summ_merged <- merge(x=summ_by_region_focus, y=er_covid_summ, by='region_code')
+(er_summ_merged
+  [, em_ratio := covid_deaths / ex_d_mean ]
+  [ex_d_mean < covid_deaths, em_ratio := 1 ]
+)
+# Data prep: merge summary data to sf object
+regions_sf_with_er <- merge(
+  x=regions_sf,
+  y=er_summ_merged[, .(region_code, em_ratio)],
+  by='region_code'
+)
+
+# PLOT MAP
+em_map_fig <- covidemr::map_ita_choropleth_region(
+  region_sf = regions_sf, in_data = er_summ_merged[region_code %in% er_plot_regions],
+  map_field='em_ratio',
+  fill_list = list(
+    limits = c(0, 1),
+    breaks = seq(.6, 1, by=.1),
+    labels = c(' < 60%', '60-70%', '70-80%', '80-90%', ' > 90%'),
+    colors = RColorBrewer::brewer.pal('BuPu', n=5)
+  ),
+  fill_type = 'gradientn',
+  titles_list = list(
+    title = 'Ratio of registered COVID-19 deaths\nto excess mortality',
+    fill = 'Proportion\nregistered', x='', y=''),
+  labels_dt = top_reg_labs[er_plot_regions, ],
+  ylim = c(4.7E6, 5.2E6)
+)
+
+# Plot underreporing ratios by week
+(er_ts_merged
+  [, `:=` (allmin = 0, allmax = 1) ]
+  [is.na(em_ratio), `:=` (allmin = NA, allmax = NA)]
+)
+em_plots_fig <- ggplot(
+    data=er_ts_merged[region_code %in% er_plot_regions],
+    aes(x=date, ymin=allmin)
+  ) +
+  facet_wrap('region_name', ncol = 3) +
+  geom_ribbon(
+    aes(ymax = allmax), fill = mort_plot_colors['Excess (all-cause)'], color=NA, alpha=.8
+  ) +
+  geom_ribbon(aes(ymax = em_ratio), fill = mort_plot_colors['COVID-19'], color = NA) +
+  scale_x_date(
+    limits = focus_date_lims,
+    breaks = focus_date_breaks,
+    labels = focus_date_labs
+  ) +
+  labs(
+    title='Proportion of excess mortality\nregistered as COVID-19 deaths, by week',
+    x='Week starting',
+    y='Proportion of excess mortality\nregistered as COVID-19 deaths'
+  ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+
+## Plot it
+png(
+  file.path(viz_dir, 'excess_ratio_plot.png'),
+  height=6, width=12, units='in', res=300
+)
+gridExtra::grid.arrange(
+  ggplotGrob(em_map_fig), ggplotGrob(em_plots_fig),
+  layout_matrix = matrix(c(1, 2), nrow=1),
+  padding = unit(0, 'line')
+)
+dev.off()
 
 
 ## Plot provinces with the most excess deaths during the focus time period -----
