@@ -169,7 +169,8 @@ map_ita_choropleth <- function(
 map_ita_choropleth_region <- function(
   region_sf, in_data, map_field, fill_list, fill_lims = NULL,
   titles_list = list(), fill_type = 'continuous', show_legend = TRUE, labels_dt = NULL,
-  save_fp = NULL, file_height = 7.25, file_width = 6
+  save_fp = NULL, file_height = 7.25, file_width = 6, xlim = c(3.5E5, 1.27E6),
+  ylim = c(4.1E6, 5.2E6)
 ){
   loc_codes <- unique(region_sf$region)
   # Ensure the correct data dimensions
@@ -197,7 +198,7 @@ map_ita_choropleth_region <- function(
     geom_sf(data = sf_merged, aes(fill=to_map), color=line_color, lwd=.5) +
     do.call(glue::glue('scale_fill_{fill_type}'), fill_list) +
     do.call('labs', titles_list) +
-    lims(x=c(3.5E5, 1.27E6), y=c(4.1E6, 5.2E6)) +
+    lims(x=xlim, y=ylim) +
     theme_minimal() +
     theme(
       axis.text.x = element_blank(),
