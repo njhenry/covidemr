@@ -458,7 +458,7 @@ em_map_fig <- covidemr::map_ita_choropleth_region(
   ylim = c(4.7E6, 5.2E6)
 )
 
-# Plot underreporing ratios by week
+# ** Figure v1: Plot under-reporting *ratios* by week **
 (er_ts_merged
   [, `:=` (allmin = 0, allmax = 1) ]
   [is.na(em_ratio), `:=` (allmin = NA, allmax = NA)]
@@ -484,14 +484,47 @@ em_plots_fig <- ggplot(
   ) +
   theme_bw() +
   theme(axis.text.x = element_text(angle=45, hjust=1))
-
-## Plot it
+# Plot it
 png(
-  file.path(viz_dir, 'excess_ratio_plot.png'),
+  file.path(viz_dir, 'excess_ratio_plot_v1.png'),
   height=6, width=12, units='in', res=300
 )
 gridExtra::grid.arrange(
   ggplotGrob(em_map_fig), ggplotGrob(em_plots_fig),
+  layout_matrix = matrix(c(1, 2), nrow=1),
+  padding = unit(0, 'line')
+)
+dev.off()
+
+
+# ** Figure v2: Plot under-reporting *counts* by week **
+em_plots_fig_v2 <- ggplot(
+  data=er_ts_merged[region_code %in% er_plot_regions], aes(x=date, ymin=0)
+) +
+  facet_wrap('region_name', ncol = 3, scales='free_y') +
+  geom_ribbon(
+    aes(ymax = ex_d_mean), fill = mort_plot_colors['Excess (all-cause)'], color=NA, alpha=.8
+  ) +
+  geom_ribbon(aes(ymax = covid_deaths), fill = mort_plot_colors['COVID-19'], color = NA) +
+  scale_x_date(
+    limits = focus_date_lims,
+    breaks = focus_date_breaks,
+    labels = focus_date_labs
+  ) +
+  labs(
+    title='Excess deaths by COVID-19 registration status',
+    x='Week starting',
+    y='Excess deaths'
+  ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+# Plot it
+png(
+  file.path(viz_dir, 'excess_ratio_plot_v2.png'),
+  height=6, width=12, units='in', res=300
+)
+gridExtra::grid.arrange(
+  ggplotGrob(em_map_fig), ggplotGrob(em_plots_fig_v2),
   layout_matrix = matrix(c(1, 2), nrow=1),
   padding = unit(0, 'line')
 )
